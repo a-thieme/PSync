@@ -30,6 +30,8 @@ NDN_LOG_INIT(psync.PartialProducer);
 
 const ndn::name::Component HELLO{"hello"};
 const ndn::name::Component SYNC{"sync"};
+const ndn::name::Component DEFAULT{"DEFAULT"};
+
 
 PartialProducer::PartialProducer(ndn::Face& face,
                                  ndn::KeyChain& keyChain,
@@ -45,8 +47,12 @@ PartialProducer::PartialProducer(ndn::Face& face,
                                std::bind(&PartialProducer::onHelloInterest, this, _1, _2));
       m_face.setInterestFilter(ndn::Name(m_syncPrefix).append(SYNC),
                                std::bind(&PartialProducer::onSyncInterest, this, _1, _2));
+      m_face.setInterestFilter(ndn::Name(m_syncPrefix).append(DEFAULT),
+                               std::bind(&PartialProducer::onDefaultInterest, this, _1, _2));
     },
     [] (auto&&... args) { onRegisterFailed(std::forward<decltype(args)>(args)...); });
+    // Add default stream at the start
+    addUserNode(ndn::Name(m_syncPrefix).append("DEFAULT"));
 }
 
 PartialProducer::PartialProducer(ndn::Face& face,
@@ -64,6 +70,18 @@ PartialProducer::PartialProducer(ndn::Face& face,
   addUserNode(userPrefix);
 }
 
+bool
+PartialProducer::addUserNode(const ndn::Name& prefix)
+{
+  // NDN_LOG_INFO("Add user Node: " << prefix );
+  bool result = ProducerBase::addUserNode(prefix);
+  if (result) {
+    updateDefaultSeqNo();
+  }
+  return result;
+}
+
+
 void
 PartialProducer::publishName(const ndn::Name& prefix, std::optional<uint64_t> seq)
 {
@@ -76,6 +94,15 @@ PartialProducer::publishName(const ndn::Name& prefix, std::optional<uint64_t> se
   updateSeqNo(prefix, newSeq);
   satisfyPendingSyncInterests(prefix);
 }
+
+void PartialProducer::updateDefaultSeqNo()
+{
+  const auto prefix = ndn::Name(m_syncPrefix).append("DEFAULT");
+  uint64_t newSeq = m_prefixes[prefix] + 1;
+  NDN_LOG_INFO("Publish: " << prefix << "/" << newSeq);
+  updateSeqNo(prefix, newSeq);
+}
+
 
 void
 PartialProducer::onHelloInterest(const ndn::Name& prefix, const ndn::Interest& interest)
@@ -105,6 +132,36 @@ PartialProducer::onHelloInterest(const ndn::Name& prefix, const ndn::Interest& i
   m_segmentPublisher.publish(interest.getName(), helloDataName,
                              state.wireEncode(), m_helloReplyFreshness);
 }
+
+void
+PartialProducer::onDefaultInterest(const ndn::Name& prefix, const ndn::Interest& interest)
+{
+  const auto& name = interest.getName();
+  if (m_segmentPublisher.replyFromStore(name)) {
+    return;
+  }
+
+  // Last component or fourth last component (in case of interest with version and segment)
+  if (name.get(name.size() - 1) != DEFAULT && name.get(name.size() - 4) != DEFAULT) {
+    return;
+  }
+
+  NDN_LOG_DEBUG("Default Interest Received, nonce: " << interest);
+
+  detail::State state;
+  for (const auto& p : m_prefixes) {
+    state.addContent(ndn::Name(p.first).appendNumber(p.second));
+  }
+  NDN_LOG_DEBUG("sending content p: " << state);
+
+  ndn::Name defaultStreamName = prefix;
+  m_iblt.appendToName(defaultStreamName);
+
+  m_segmentPublisher.publish(interest.getName(), defaultStreamName,
+                             state.wireEncode(), m_helloReplyFreshness);
+
+}
+
 
 void
 PartialProducer::onSyncInterest(const ndn::Name& prefix, const ndn::Interest& interest)

@@ -42,6 +42,7 @@ Consumer::Consumer(ndn::Face& face, const ndn::Name& syncPrefix, const Options& 
   , m_rng(ndn::random::getRandomNumberEngine())
   , m_rangeUniformRandom(100, 500)
 {
+  addSubscription(m_syncPrefix.append("DEFAULT"), 0);
 }
 
 Consumer::Consumer(const ndn::Name& syncPrefix,

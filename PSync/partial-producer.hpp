@@ -88,6 +88,22 @@ public:
   void
   publishName(const ndn::Name& prefix, std::optional<uint64_t> seq = std::nullopt);
 
+
+
+  /**
+   * @brief Adds a user node for synchronization
+   *
+   * Initializes m_prefixes[prefix] to zero
+   * Does not add zero-th sequence number to IBF
+   * because if a large number of user nodes are added
+   * then decoding of the difference between own IBF and
+   * other IBF will not be possible
+   *
+   * @param prefix the user node to be added
+   */
+  bool
+  addUserNode(const ndn::Name& prefix);
+  
 private:
   /**
    * @brief Satisfy any pending interest that have subscription for prefix
@@ -120,6 +136,13 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
    */
   void
   onSyncInterest(const ndn::Name& prefix, const ndn::Interest& interest);
+
+  void 
+  onDefaultInterest(const ndn::Name& prefix, const ndn::Interest& interest);
+  
+  void
+  updateDefaultSeqNo();
+
 
 PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   struct PendingEntryInfo
