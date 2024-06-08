@@ -46,12 +46,16 @@ public:
     for (int i = 0; i < numDataStreams; i++) {
       ndn::Name updateName(userPrefix + "-" + std::to_string(i));
 
-      // Add the user prefix to the producer
-      m_producer.addUserNode(updateName);
-
-      // Each user prefix is updated at a random interval between 0 and 60 seconds
+//       Each user prefix is updated at a random interval between 0 and 60 seconds
+      // Add the stream prefix to the producer at random time
       m_scheduler.schedule(ndn::time::milliseconds(m_uniformRand(m_rng)),
-                           [this, updateName] { doUpdate(updateName); });
+                           [this, updateName] {
+                             m_producer.addUserNode(updateName);
+                             // then do updates for it at a random time
+                             m_scheduler.schedule(ndn::time::milliseconds(m_uniformRand(m_rng)),
+                                                  [this, updateName] { doUpdate(updateName); });
+                           });
+
     }
   }
 

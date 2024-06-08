@@ -41,7 +41,7 @@ public:
           psync::Consumer::Options opts;
           opts.onDefaultData = std::bind(&PSyncConsumer::afterReceiveHelloData, this, _1);
           opts.onUpdate = std::bind(&PSyncConsumer::processSyncUpdate, this, _1);
-          opts.bfCount = m_nSub;
+          opts.bfCount = 15;
           return opts;
       } ())
   {
@@ -70,8 +70,8 @@ private:
     std::shuffle(sensors.begin(), sensors.end(), m_rng);
 
     // Randomly subscribe to m_nSub prefixes
-    for (int i = 0; i < m_nSub; i++) {
-      ndn::Name prefix = sensors[i];
+    for (long unsigned int i = 0; i < (long unsigned)m_nSub && i < sensors.size(); i++) {
+      ndn::Name prefix = sensors.at(i);
       NDN_LOG_INFO("Subscribing to: " << prefix);
       // fixme maybe this should have sequence number from default stream?
       // i feel like it should get the latest sequence number from sync
