@@ -31,37 +31,42 @@ Consumer::Consumer(ndn::Face& face, const ndn::Name& syncPrefix, const Options& 
   : m_face(face)
   , m_scheduler(m_face.getIoContext())
   , m_syncPrefix(syncPrefix)
-  , m_helloInterestPrefix(ndn::Name(m_syncPrefix).append("hello"))
+  , m_defaultInterestPrefix(ndn::Name(m_syncPrefix).append("DEFAULT"))
   , m_syncInterestPrefix(ndn::Name(m_syncPrefix).append("sync"))
   , m_syncDataContentType(ndn::tlv::ContentType_Blob)
-  , m_onReceiveHelloData(opts.onHelloData)
+  , m_onReceiveDefaultData(opts.onDefaultData)
   , m_onUpdate(opts.onUpdate)
   , m_bloomFilter(opts.bfCount, opts.bfFalsePositive)
-  , m_helloInterestLifetime(opts.helloInterestLifetime)
+  , m_defaultInterestLifetime(opts.defaultInterestLifetime)
   , m_syncInterestLifetime(opts.syncInterestLifetime)
   , m_rng(ndn::random::getRandomNumberEngine())
   , m_rangeUniformRandom(100, 500)
 {
   addSubscription(m_syncPrefix.append("DEFAULT"), 0);
+  detail::BloomFilter bloomFilter (opts.bfCount, opts.bfFalsePositive);
+  ndn::Name fullIBF;
+  bloomFilter.appendToName(fullIBF);
+  m_ibltEmpty = fullIBF.get(-1);
 }
 
 Consumer::Consumer(const ndn::Name& syncPrefix,
                    ndn::Face& face,
-                   const ReceiveHelloCallback& onReceiveHelloData,
+                   const ReceiveDefaultCallback& onReceiveDefaultData,
                    const UpdateCallback& onUpdate,
                    unsigned int count,
                    double falsePositive,
-                   ndn::time::milliseconds helloInterestLifetime,
+                   ndn::time::milliseconds defaultInterestLifetime,
                    ndn::time::milliseconds syncInterestLifetime)
   : Consumer(face, syncPrefix,
-             Options{onReceiveHelloData, onUpdate, static_cast<uint32_t>(count), falsePositive,
-                     helloInterestLifetime, syncInterestLifetime})
+             Options{onReceiveDefaultData, onUpdate, static_cast<uint32_t>(count), falsePositive,
+                     defaultInterestLifetime, syncInterestLifetime})
 {
 }
 
 bool
 Consumer::addSubscription(const ndn::Name& prefix, uint64_t seqNo, bool callSyncDataCb)
 {
+  NDN_LOG_DEBUG("addSubscription: " << prefix << " " << seqNo);
   auto it = m_prefixes.emplace(prefix, seqNo);
   if (!it.second) {
     return false;
@@ -70,7 +75,9 @@ Consumer::addSubscription(const ndn::Name& prefix, uint64_t seqNo, bool callSync
   NDN_LOG_DEBUG("Subscribing prefix: " << prefix);
 
   m_subscriptionList.emplace(prefix);
+  NDN_LOG_DEBUG("subscribed prefix: " << prefix);
   m_bloomFilter.insert(prefix);
+  NDN_LOG_DEBUG("inserted prefix: " << prefix);
 
   if (callSyncDataCb && seqNo != 0) {
     m_onUpdate({{prefix, seqNo, seqNo, 0}});
@@ -110,79 +117,85 @@ Consumer::stop()
     m_syncFetcher.reset();
   }
 
-  if (m_helloFetcher) {
-    m_helloFetcher->stop();
-    m_helloFetcher.reset();
+  if (m_defaultFetcher) {
+    m_defaultFetcher->stop();
+    m_defaultFetcher.reset();
   }
 }
 
 void
-Consumer::sendHelloInterest()
+Consumer::sendDefaultInterest()
 {
-  ndn::Interest helloInterest(m_helloInterestPrefix);
-  NDN_LOG_DEBUG("Send Hello Interest " << helloInterest);
+  ndn::Interest defaultInterest(m_defaultInterestPrefix);
+  NDN_LOG_DEBUG("Send Default Interest " << defaultInterest);
 
-  if (m_helloFetcher) {
-    m_helloFetcher->stop();
+  if (m_defaultFetcher) {
+    m_defaultFetcher->stop();
   }
 
   using ndn::SegmentFetcher;
   SegmentFetcher::Options options;
-  options.interestLifetime = m_helloInterestLifetime;
-  options.maxTimeout = m_helloInterestLifetime;
+  options.interestLifetime = m_defaultInterestLifetime;
+  options.maxTimeout = m_defaultInterestLifetime;
   options.rttOptions.initialRto = m_syncInterestLifetime;
 
-  m_helloFetcher = SegmentFetcher::start(m_face, helloInterest,
+  m_defaultFetcher = SegmentFetcher::start(m_face, defaultInterest,
                                          ndn::security::getAcceptAllValidator(), options);
 
-  m_helloFetcher->afterSegmentValidated.connect([this] (const ndn::Data& data) {
-    if (data.getFinalBlock()) {
-      m_helloDataName = data.getName().getPrefix(-2);
-    }
+//  this is just for getting the IBF from the "hello" (default) data name
+  m_defaultFetcher->afterSegmentValidated.connect([this] (const ndn::Data& data) {
+    NDN_LOG_DEBUG("Data for " << data.getFullName() << " is validated.");
   });
 
-  m_helloFetcher->onComplete.connect([this] (const ndn::ConstBufferPtr& bufferPtr) {
-    onHelloData(bufferPtr);
+  m_defaultFetcher->onComplete.connect([this] (const ndn::ConstBufferPtr& bufferPtr) {
+    onDefaultData(bufferPtr);
   });
 
-  m_helloFetcher->onError.connect([this] (uint32_t errorCode, const std::string& msg) {
-    NDN_LOG_TRACE("Cannot fetch hello data, error: " << errorCode << " message: " << msg);
+  m_defaultFetcher->onError.connect([this] (uint32_t errorCode, const std::string& msg) {
+    NDN_LOG_TRACE("Cannot fetch default data, error: " << errorCode << " message: " << msg);
     ndn::time::milliseconds after(m_rangeUniformRandom(m_rng));
     NDN_LOG_TRACE("Scheduling after " << after);
-    m_scheduler.schedule(after, [this] { sendHelloInterest(); });
+    m_scheduler.schedule(after, [this] { sendDefaultInterest(); });
   });
 }
 
 void
-Consumer::onHelloData(const ndn::ConstBufferPtr& bufferPtr)
+Consumer::onDefaultData(const ndn::ConstBufferPtr &bufferPtr)
 {
-  NDN_LOG_DEBUG("On Hello Data");
-
-  // Extract IBF from name which is the last element in hello data's name
-  m_iblt = m_helloDataName.getSubName(m_helloDataName.size() - 1, 1);
-
-  NDN_LOG_TRACE("m_iblt: " << std::hash<ndn::Name>{}(m_iblt));
+  NDN_LOG_DEBUG("onDefaultData");
 
   detail::State state{ndn::Block(bufferPtr)};
   std::vector<MissingDataInfo> updates;
-  std::map<ndn::Name, uint64_t> availableSubscriptions;
+  std::vector<ndn::Name> availableSubscriptions;
 
-  NDN_LOG_DEBUG("Hello Data: " << state);
+  NDN_LOG_DEBUG("Default Data: " << state);
 
-  for (const auto& content : state) {
-    const ndn::Name& prefix = content.getPrefix(-1);
-    uint64_t seq = content.get(content.size() - 1).toNumber();
+  for (const ndn::Name prefix : state) {
+    NDN_LOG_DEBUG("on default data name " << prefix);
+//    NDN_LOG_DEBUG("SEQ NUMBER DEFAULT");
+//    uint64_t seq = content.get(content.size() - 1).toNumber();
+//    NDN_LOG_DEBUG("SEQ NUMBER DEFAULT " << seq);
     // If consumer is subscribed then prefix must already be present in
     // m_prefixes (see addSubscription). So [] operator is safe to use.
-    if (isSubscribed(prefix) && seq > m_prefixes[prefix]) {
+//    if (isSubscribed(prefix) && seq > m_prefixes[prefix]) {
       // In case we are behind on this prefix and consumer is subscribed to it
-      updates.push_back({prefix, m_prefixes[prefix] + 1, seq, 0});
-      m_prefixes[prefix] = seq;
-    }
-    availableSubscriptions.emplace(prefix, seq);
-  }
+//      updates.push_back({prefix, m_prefixes[prefix] + 1, seq, 0});
+//      m_prefixes[prefix] = seq;
+//    }
 
-  m_onReceiveHelloData(availableSubscriptions);
+    if (!m_defaultInterestPrefix.equals(prefix))
+    {
+      NDN_LOG_DEBUG("emplace to available " << prefix);
+//      availableSubscriptions.emplace(prefix, seq);
+      availableSubscriptions.emplace_back(prefix);
+      NDN_LOG_TRACE("GOT HERE");
+    }
+    NDN_LOG_TRACE("GOT THERE");
+  }
+  NDN_LOG_DEBUG("do on default data callback");
+  if (!availableSubscriptions.empty()) {
+    m_onReceiveDefaultData(availableSubscriptions);
+  }
 
   if (!updates.empty()) {
     NDN_LOG_DEBUG("Updating application with missed updates");
@@ -193,20 +206,27 @@ Consumer::onHelloData(const ndn::ConstBufferPtr& bufferPtr)
 void
 Consumer::sendSyncInterest()
 {
-  BOOST_ASSERT(!m_iblt.empty());
-
+  // /sync/sync/
   ndn::Name syncInterestName(m_syncInterestPrefix);
 
   // Append subscription list
+  // /sync/sync/<SL>/
   m_bloomFilter.appendToName(syncInterestName);
 
-  // Append IBF received in hello/sync data
-  syncInterestName.append(m_iblt);
+  // /sync/sync/<SL>/<IBF>/
+  if (m_iblt.empty()) {
+    // Append empty IBF
+    syncInterestName.append(m_ibltEmpty);
+  } else {
+    // Append IBF received in default/sync data
+    syncInterestName.append(m_iblt);
+  }
 
   ndn::Interest syncInterest(syncInterestName);
 
   NDN_LOG_DEBUG("sendSyncInterest, nonce: " << syncInterest.getNonce() <<
                 " hash: " << std::hash<ndn::Name>{}(syncInterest.getName()));
+  NDN_LOG_DEBUG("sync interest name: " << syncInterestName);
 
   if (m_syncFetcher) {
     m_syncFetcher->stop();
@@ -228,8 +248,9 @@ Consumer::sendSyncInterest()
     }
 
     if (m_syncDataContentType == ndn::tlv::ContentType_Nack) {
-      NDN_LOG_DEBUG("Received application Nack from producer, sending hello again");
-      sendHelloInterest();
+      NDN_LOG_DEBUG("Received application Nack from producer, sending default again");
+      // fixme: maybe removal necessary
+      sendDefaultInterest();
     }
   });
 
@@ -267,17 +288,23 @@ Consumer::onSyncData(const ndn::ConstBufferPtr& bufferPtr)
   for (const auto& content : state) {
     NDN_LOG_DEBUG(content);
     const ndn::Name& prefix = content.getPrefix(-1);
+    NDN_LOG_DEBUG("SYNC DATA TO NUMBER");
     uint64_t seq = content.get(content.size() - 1).toNumber();
     if (m_prefixes.find(prefix) == m_prefixes.end() || seq > m_prefixes[prefix]) {
-      // If this is just the next seq number then we had already informed the consumer about
-      // the previous sequence number and hence seq low and seq high should be equal to current seq
-      updates.push_back({prefix, m_prefixes[prefix] + 1, seq, 0});
       m_prefixes[prefix] = seq;
+      if (prefix.equals(m_defaultInterestPrefix)) {
+        sendDefaultInterest();
+      } else {
+        // If this is just the next seq number then we had already informed the consumer about
+        // the previous sequence number and hence seq low and seq high should be equal to current seq
+        updates.push_back({prefix, m_prefixes[prefix] + 1, seq, 0});
+      }
     }
     // Else updates will be empty and consumer will not be notified.
   }
 
   NDN_LOG_DEBUG("Sync Data: " << state);
+  // todo: if default data stream is new, send interest for that data
 
   if (!updates.empty()) {
     m_onUpdate(updates);

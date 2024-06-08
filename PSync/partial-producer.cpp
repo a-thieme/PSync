@@ -28,7 +28,6 @@ namespace psync {
 
 NDN_LOG_INIT(psync.PartialProducer);
 
-const ndn::name::Component HELLO{"hello"};
 const ndn::name::Component SYNC{"sync"};
 const ndn::name::Component DEFAULT{"DEFAULT"};
 
@@ -39,12 +38,10 @@ PartialProducer::PartialProducer(ndn::Face& face,
                                  const Options& opts)
   : ProducerBase(face, keyChain, opts.ibfCount, syncPrefix, opts.syncDataFreshness,
                  opts.ibfCompression, CompressionScheme::NONE)
-  , m_helloReplyFreshness(opts.helloDataFreshness)
+  , m_defaultReplyFreshness(opts.defaultDataFreshness)
 {
   m_registeredPrefix = m_face.registerPrefix(m_syncPrefix,
     [this] (const auto&) {
-      m_face.setInterestFilter(ndn::Name(m_syncPrefix).append(HELLO),
-                               std::bind(&PartialProducer::onHelloInterest, this, _1, _2));
       m_face.setInterestFilter(ndn::Name(m_syncPrefix).append(SYNC),
                                std::bind(&PartialProducer::onSyncInterest, this, _1, _2));
       m_face.setInterestFilter(ndn::Name(m_syncPrefix).append(DEFAULT),
@@ -60,12 +57,12 @@ PartialProducer::PartialProducer(ndn::Face& face,
                                  size_t expectedNumEntries,
                                  const ndn::Name& syncPrefix,
                                  const ndn::Name& userPrefix,
-                                 ndn::time::milliseconds helloReplyFreshness,
+                                 ndn::time::milliseconds defaultReplyFreshness,
                                  ndn::time::milliseconds syncReplyFreshness,
                                  CompressionScheme ibltCompression)
   : PartialProducer(face, keyChain, syncPrefix,
                     Options{static_cast<uint32_t>(expectedNumEntries), ibltCompression,
-                            helloReplyFreshness, syncReplyFreshness})
+                            defaultReplyFreshness, syncReplyFreshness})
 {
   addUserNode(userPrefix);
 }
@@ -103,36 +100,6 @@ void PartialProducer::updateDefaultSeqNo()
   updateSeqNo(prefix, newSeq);
 }
 
-
-void
-PartialProducer::onHelloInterest(const ndn::Name& prefix, const ndn::Interest& interest)
-{
-  const auto& name = interest.getName();
-  if (m_segmentPublisher.replyFromStore(name)) {
-    return;
-  }
-
-  // Last component or fourth last component (in case of interest with version and segment)
-  // needs to be hello
-  if (name.get(name.size() - 1) != HELLO && name.get(name.size() - 4) != HELLO) {
-    return;
-  }
-
-  NDN_LOG_DEBUG("Hello Interest Received, nonce: " << interest);
-
-  detail::State state;
-  for (const auto& p : m_prefixes) {
-    state.addContent(ndn::Name(p.first).appendNumber(p.second));
-  }
-  NDN_LOG_DEBUG("sending content p: " << state);
-
-  ndn::Name helloDataName = prefix;
-  m_iblt.appendToName(helloDataName);
-
-  m_segmentPublisher.publish(interest.getName(), helloDataName,
-                             state.wireEncode(), m_helloReplyFreshness);
-}
-
 void
 PartialProducer::onDefaultInterest(const ndn::Name& prefix, const ndn::Interest& interest)
 {
@@ -142,23 +109,23 @@ PartialProducer::onDefaultInterest(const ndn::Name& prefix, const ndn::Interest&
   }
 
   // Last component or fourth last component (in case of interest with version and segment)
+  // make sure "DEFAULT" is in the interest name
+  // todo: is this even needed? in what case would the interest name not be correct here?
   if (name.get(name.size() - 1) != DEFAULT && name.get(name.size() - 4) != DEFAULT) {
+    NDN_LOG_WARN("Interest name " << name << " doesn't have " << DEFAULT);
     return;
   }
 
-  NDN_LOG_DEBUG("Default Interest Received, nonce: " << interest);
+  NDN_LOG_DEBUG("Default Interest Received: " << interest);
 
   detail::State state;
   for (const auto& p : m_prefixes) {
-    state.addContent(ndn::Name(p.first).appendNumber(p.second));
+    state.addContent(ndn::Name(p.first));
   }
-  NDN_LOG_DEBUG("sending content p: " << state);
+  NDN_LOG_DEBUG("sending content: " << state);
 
-  ndn::Name defaultStreamName = prefix;
-  m_iblt.appendToName(defaultStreamName);
-
-  m_segmentPublisher.publish(interest.getName(), defaultStreamName,
-                             state.wireEncode(), m_helloReplyFreshness);
+  m_segmentPublisher.publish(interest.getName(), prefix,
+                             state.wireEncode(), m_defaultReplyFreshness);
 
 }
 
@@ -175,28 +142,43 @@ PartialProducer::onSyncInterest(const ndn::Name& prefix, const ndn::Interest& in
 
   ndn::Name nameWithoutSyncPrefix = interest.getName().getSubName(prefix.size());
   ndn::Name interestName;
+  NDN_LOG_DEBUG("full interest name " << interest.getName());
+  NDN_LOG_DEBUG("name without prefix " << nameWithoutSyncPrefix);
+  NDN_LOG_DEBUG("prefix " << prefix);
 
-  if (nameWithoutSyncPrefix.size() == 4) {
-    // Get /<prefix>/BF/IBF/ from /<prefix>/BF/IBF (3 components of BF + 1 for IBF)
-    interestName = interest.getName();
-  }
-  else if (nameWithoutSyncPrefix.size() == 6) {
-    // Get <prefix>/BF/IBF/ from /<prefix>/BF/IBF/<version>/<segment-no>
-    interestName = interest.getName().getPrefix(-2);
-  }
-  else {
-    return;
+  switch (nameWithoutSyncPrefix.size()) {
+    case 4:
+      NDN_LOG_TRACE("nameWithoutSyncPrefix.size() 4");
+      // Get /<prefix>/<SL>/IBF/ from /<prefix>/BF/IBF (3 components of BF + 1 for IBF)
+      interestName = interest.getName();
+      break;
+    case 6:
+      NDN_LOG_TRACE("nameWithoutSyncPrefix.size() 6");
+      // Get <prefix>/<SL>/IBF/ from /<prefix>/BF/IBF/<version>/<segment-no>
+      interestName = interest.getName().getPrefix(-2);
+      break;
+    default:
+      NDN_LOG_WARN("name without sync prefix is of length " << nameWithoutSyncPrefix.size());
+      NDN_LOG_WARN("aborting response to sync interest " << interest.getName());
+      return;
   }
 
+  // /projected-count/false-positive per 1000/bf name/ibltname
   ndn::name::Component bfName, ibltName;
   unsigned int projectedCount;
   double falsePositiveProb;
   try {
-    projectedCount = interestName.get(interestName.size()-4).toNumber();
-    falsePositiveProb = interestName.get(interestName.size()-3).toNumber()/1000.;
-    bfName = interestName.get(interestName.size()-2);
+    projectedCount = nameWithoutSyncPrefix.get(0).toNumber();
+    NDN_LOG_DEBUG("projected count: " << projectedCount);
 
-    ibltName = interestName.get(interestName.size()-1);
+    falsePositiveProb = nameWithoutSyncPrefix.get(1).toNumber()/1000.;
+    NDN_LOG_DEBUG("false positive: " << falsePositiveProb);
+
+    bfName = nameWithoutSyncPrefix.get(2);
+    NDN_LOG_DEBUG("subscription list: " << bfName);
+
+    ibltName = nameWithoutSyncPrefix.get(3);
+    NDN_LOG_DEBUG("iblt name: " << ibltName);
   }
   catch (const std::exception& e) {
     NDN_LOG_ERROR("Cannot extract bloom filter and IBF from sync interest: " << e.what());
@@ -208,11 +190,24 @@ PartialProducer::onSyncInterest(const ndn::Name& prefix, const ndn::Interest& in
   detail::IBLT iblt(m_expectedNumEntries, m_ibltCompression);
   try {
     bf = detail::BloomFilter(projectedCount, falsePositiveProb, bfName);
-    iblt.initialize(ibltName);
   }
   catch (const std::exception& e) {
+    NDN_LOG_DEBUG("had exception in bf bloom filter initialization");
     NDN_LOG_WARN(e.what());
     return;
+  }
+
+  try {
+    iblt.initialize(ibltName);
+  } catch (const std::exception& e) {
+    for (const auto c: ibltName.toUri()){
+      // fixme: this is an awful way to check for an empty bloom filter
+      if (c != '0' && c != '%') {
+        NDN_LOG_DEBUG("had exception in iblt bloom filter initialization");
+        NDN_LOG_WARN(e.what());
+        return;
+      }
+    }
   }
 
   // get the difference

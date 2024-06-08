@@ -33,13 +33,13 @@
 
 namespace psync {
 
-using ReceiveHelloCallback = std::function<void(const std::map<ndn::Name, uint64_t>&)>;
+using ReceiveDefaultCallback = std::function<void(const std::vector<ndn::Name>&)>;
 
 /**
  * @brief Consumer logic to subscribe to producer's data
  *
- * Application needs to call sendHelloInterest to get the subscription list
- * in psync::ReceiveHelloCallback. It can then add the desired names using addSubscription.
+ * Application needs to call sendDefaultInterest to get the subscription list
+ * in psync::ReceiveDefaultCallback. It can then add the desired names using addSubscription.
  * Finally application will call sendSyncInterest. If the application adds something
  * later to the subscription list then it may call sendSyncInterest again for
  * sending the next sync interest with updated IBF immediately to reduce any delay in sync data.
@@ -47,7 +47,7 @@ using ReceiveHelloCallback = std::function<void(const std::map<ndn::Name, uint64
  *
  * If consumer wakes up after a long time to sync, producer may not decode the differences
  * with its old IBF successfully and send an application nack. Upon receiving the nack,
- * consumer will send a hello again and inform the application via psync::ReceiveHelloCallback
+ * consumer will send a Default again and inform the application via psync::ReceiveDefaultCallback
  * and psync::UpdateCallback.
  *
  * Currently, fetching of the data needs to be handled by the application.
@@ -60,16 +60,16 @@ public:
    */
   struct Options
   {
-    /// Callback to give hello data back to application.
-    ReceiveHelloCallback onHelloData = [] (const auto&) {};
+    /// Callback to give default data back to application.
+    ReceiveDefaultCallback onDefaultData = [] (const auto&) {};
     /// Callback to give sync data back to application.
     UpdateCallback onUpdate = [] (const auto&) {};
     /// Number of expected elements (subscriptions) in Bloom filter.
     uint32_t bfCount = 6;
     /// Bloom filter false positive probability.
     double bfFalsePositive = 0.001;
-    /// Lifetime of hello Interest.
-    ndn::time::milliseconds helloInterestLifetime = HELLO_INTEREST_LIFETIME;
+    /// Lifetime of default Interest.
+    ndn::time::milliseconds defaultInterestLifetime = DEFAULT_INTEREST_LIFETIME;
     /// Lifetime of sync Interest.
     ndn::time::milliseconds syncInterestLifetime = SYNC_INTEREST_LIFETIME;
   };
@@ -78,7 +78,7 @@ public:
    * @brief Constructor.
    *
    * @param face Application face.
-   * @param syncPrefix Prefix to send hello and sync Interests to producer.
+   * @param syncPrefix Prefix to send default and sync Interests to producer.
    * @param opts Options.
    */
   Consumer(ndn::Face& face, const ndn::Name& syncPrefix, const Options& opts);
@@ -86,20 +86,20 @@ public:
   [[deprecated]]
   Consumer(const ndn::Name& syncPrefix,
            ndn::Face& face,
-           const ReceiveHelloCallback& onReceiveHelloData,
+           const ReceiveDefaultCallback& onReceiveDefaultData,
            const UpdateCallback& onUpdate,
            unsigned int count,
            double falsePositive = 0.001,
-           ndn::time::milliseconds helloInterestLifetime = HELLO_INTEREST_LIFETIME,
+           ndn::time::milliseconds defaultInterestLifetime = DEFAULT_INTEREST_LIFETIME,
            ndn::time::milliseconds syncInterestLifetime = SYNC_INTEREST_LIFETIME);
 
   /**
-   * @brief send hello interest /<sync-prefix>/hello/
+   * @brief send Default interest /<sync-prefix>/DEFAULT/
    *
-   * Should be called by the application whenever it wants to send a hello
+   * Should be called by the application whenever it wants to send a Default
    */
   void
-  sendHelloInterest();
+  sendDefaultInterest();
 
   /**
    * @brief send sync interest /<sync-prefix>/sync/\<BF\>/\<producers-IBF\>
@@ -113,11 +113,11 @@ public:
    * @brief Add prefix to subscription list
    *
    * @param prefix prefix to be added to the list
-   * @param seqNo the latest sequence number for the prefix received in HelloData callback
+   * @param seqNo the latest sequence number for the prefix received in DefaultData callback
    * @param callSyncDataCb true by default to let app know that a new sequence number is available.
-   *        Usually sequence number is zero in hello data, but when it is not Consumer can
+   *        Usually sequence number is zero in Default data, but when it is not Consumer can
    *        notify the app. Since the app is aware of the latest sequence number by
-   *        ReceiveHelloCallback, app may choose to not let Consumer call UpdateCallback
+   *        ReceiveDefaultCallback, app may choose to not let Consumer call UpdateCallback
    *        by setting this to false.
    * @return true if prefix is added, false if it is already present
    */
@@ -163,22 +163,22 @@ public:
 
 private:
   /**
-   * @brief Get hello data from the producer
+   * @brief Get Default data from the producer
    *
-   * Format: /<sync-prefix>/hello/\<BF\>/\<producer-IBF\>
+   * Format: /<sync-prefix>/DEFAULT/\<BF\>/\<producer-IBF\>
    * Data content is all the prefixes the producer has.
    * We store the producer's IBF to be used in sending sync interest
    *
-   * m_onReceiveHelloData is called to let the application know
+   * m_onReceiveDefaultData is called to let the application know
    * so that it can set the subscription list using addSubscription
    *
-   * @param bufferPtr hello data content
+   * @param bufferPtr Default data content
    */
   void
-  onHelloData(const ndn::ConstBufferPtr& bufferPtr);
+  onDefaultData(const ndn::ConstBufferPtr& bufferPtr);
 
   /**
-   * @brief Get hello data from the producer
+   * @brief Get Default data from the producer
    *
    * Format: <sync-prefix>/sync/\<BF\>/\<producers-IBF\>/\<producers-latest-IBF\>
    * Data content is all the prefixes the producer thinks the consumer doesn't have
@@ -190,19 +190,23 @@ private:
   void
   onSyncData(const ndn::ConstBufferPtr& bufferPtr);
 
+  void
+  onDefaultStreamData(const ndn::ConstBufferPtr& bufferPtr);
+
 PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   ndn::Face& m_face;
   ndn::Scheduler m_scheduler;
 
   ndn::Name m_syncPrefix;
-  ndn::Name m_helloInterestPrefix;
+  ndn::Name m_defaultInterestPrefix;
   ndn::Name m_syncInterestPrefix;
   ndn::Name m_iblt;
-  ndn::Name m_helloDataName;
+  ndn::name::Component m_ibltEmpty;
+  ndn::Name m_defaultDataName;
   ndn::Name m_syncDataName;
   uint32_t m_syncDataContentType;
 
-  ReceiveHelloCallback m_onReceiveHelloData;
+  ReceiveDefaultCallback m_onReceiveDefaultData;
 
   // Called when new sync update is received from producer.
   UpdateCallback m_onUpdate;
@@ -210,7 +214,7 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   // Bloom filter is used to store application/user's subscription list.
   detail::BloomFilter m_bloomFilter;
 
-  ndn::time::milliseconds m_helloInterestLifetime;
+  ndn::time::milliseconds m_defaultInterestLifetime;
   ndn::time::milliseconds m_syncInterestLifetime;
 
   // Store sequence number for the prefix.
@@ -219,7 +223,7 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
 
   ndn::random::RandomNumberEngine& m_rng;
   std::uniform_int_distribution<> m_rangeUniformRandom;
-  std::shared_ptr<ndn::SegmentFetcher> m_helloFetcher;
+  std::shared_ptr<ndn::SegmentFetcher> m_defaultFetcher;
   std::shared_ptr<ndn::SegmentFetcher> m_syncFetcher;
 };
 

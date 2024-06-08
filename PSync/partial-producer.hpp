@@ -45,8 +45,8 @@ public:
     uint32_t ibfCount = 40;
     /// Compression scheme to use for IBF.
     CompressionScheme ibfCompression = CompressionScheme::NONE;
-    /// FreshnessPeriod of hello Data.
-    ndn::time::milliseconds helloDataFreshness = HELLO_REPLY_FRESHNESS;
+    /// FreshnessPeriod of default Data.
+    ndn::time::milliseconds defaultDataFreshness = DEFAULT_REPLY_FRESHNESS;
     /// FreshnessPeriod of sync Data.
     ndn::time::milliseconds syncDataFreshness = SYNC_REPLY_FRESHNESS;
   };
@@ -70,7 +70,7 @@ public:
                   size_t expectedNumEntries,
                   const ndn::Name& syncPrefix,
                   const ndn::Name& userPrefix,
-                  ndn::time::milliseconds helloReplyFreshness = HELLO_REPLY_FRESHNESS,
+                  ndn::time::milliseconds defaultReplyFreshness = DEFAULT_REPLY_FRESHNESS,
                   ndn::time::milliseconds syncReplyFreshness = SYNC_REPLY_FRESHNESS,
                   CompressionScheme ibltCompression = CompressionScheme::NONE);
 
@@ -114,16 +114,6 @@ private:
   satisfyPendingSyncInterests(const ndn::Name& prefix);
 
 PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
-  /**
-   * @brief Receive hello interest from consumer and respond with hello data
-   *
-   * Hello data's name format is: /\<sync-prefix\>/hello/\<current-IBF\>
-   *
-   * @param prefix the hello interest prefix
-   * @param interest the hello interest received
-   */
-  void
-  onHelloInterest(const ndn::Name& prefix, const ndn::Interest& interest);
 
   /**
    * @brief Receive sync interest from consumer
@@ -154,7 +144,7 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
 
   std::map<ndn::Name, PendingEntryInfo> m_pendingEntries;
   ndn::ScopedRegisteredPrefixHandle m_registeredPrefix;
-  ndn::time::milliseconds m_helloReplyFreshness;
+  ndn::time::milliseconds m_defaultReplyFreshness;
 };
 
 } // namespace psync
