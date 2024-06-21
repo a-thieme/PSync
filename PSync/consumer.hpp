@@ -23,6 +23,7 @@
 #include "PSync/common.hpp"
 #include "PSync/detail/access-specifiers.hpp"
 #include "PSync/detail/bloom-filter.hpp"
+#include "PSync/detail/iblt.hpp"
 
 #include <ndn-cxx/face.hpp>
 #include <ndn-cxx/util/random.hpp>
@@ -200,8 +201,9 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   ndn::Name m_syncPrefix;
   ndn::Name m_defaultInterestPrefix;
   ndn::Name m_syncInterestPrefix;
-  ndn::Name m_iblt;
-  ndn::name::Component m_ibltEmpty;
+  ndn::name::Component m_iblt;
+  ndn::name::Component m_ibltExpectedCount;
+  ndn::name::Component m_ibltCompression;
   ndn::Name m_defaultDataName;
   ndn::Name m_syncDataName;
   uint32_t m_syncDataContentType;

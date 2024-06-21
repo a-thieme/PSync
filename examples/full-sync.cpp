@@ -43,11 +43,12 @@ public:
    */
   Producer(const ndn::Name& syncPrefix, const std::string& userPrefix,
            int numDataStreams, int maxNumPublish)
-    : m_producer(m_face, m_keyChain, syncPrefix, [this] {
+    : m_producer(m_face, m_keyChain, syncPrefix, [this, numDataStreams] {
           psync::FullProducer::Options opts;
           opts.onUpdate = std::bind(&Producer::processSyncUpdate, this, _1);
           opts.syncInterestLifetime = 1600_ms;
           opts.syncDataFreshness = 1600_ms;
+          opts.ibfCount = numDataStreams;
           return opts;
       } ())
     , m_maxNumPublish(maxNumPublish)

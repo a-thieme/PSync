@@ -54,6 +54,11 @@ enum class CompressionScheme {
 #endif
 };
 
+  const ndn::name::Component EMPTY_IBLT{"0"};
+  const ndn::name::Component SYNC{"sync"};
+  // todo: maybe change this because DEFAULT may be used elsewhere in the code
+  const ndn::name::Component DEFAULT{"DEFAULT"};
+
 class CompressionError : public std::runtime_error
 {
 public:
@@ -65,6 +70,7 @@ struct MissingDataInfo
   ndn::Name prefix;
   uint64_t lowSeq;
   uint64_t highSeq;
+  // fixme: this is never set to anything other than 0
   uint64_t incomingFace;
 };
 

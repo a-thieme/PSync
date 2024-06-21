@@ -140,6 +140,7 @@ FullProducer::sendSyncInterest()
   // after, that Nonce will be different than the one seen in tshark!
   NDN_LOG_DEBUG("sendFullSyncInterest, nonce: " << syncInterest.getNonce() <<
                 ", hash: " << std::hash<ndn::Name>{}(syncInterestName));
+  NDN_LOG_DEBUG("sync interest name: " << syncInterest.getName());
 
   m_lastInterestSentTime = currentTime;
   m_fetcher = SegmentFetcher::start(m_face, syncInterest,
@@ -232,6 +233,7 @@ FullProducer::onSyncInterest(const ndn::Name& prefixName, const ndn::Interest& i
   auto interestNameHash = std::hash<ndn::Name>{}(interestName);
   NDN_LOG_DEBUG("Full sync Interest received, nonce: " << interest.getNonce() <<
                 ", hash: " << interestNameHash);
+  NDN_LOG_DEBUG("on sync interest name: " << interestName);
 
   if (isTimedProcessing) {
     NDN_LOG_TRACE("Delayed Interest being processed now");
@@ -429,6 +431,7 @@ void
 FullProducer::onSyncData(const ndn::Interest& interest, const ndn::ConstBufferPtr& bufferPtr)
 {
   deletePendingInterests(interest.getName());
+  NDN_LOG_DEBUG("onSyncData " << interest.getName());
 
   detail::State state;
   try {
@@ -493,7 +496,8 @@ FullProducer::satisfyPendingInterests(const ndn::Name& updatedPrefixWithSeq)
   NDN_LOG_DEBUG("Satisfying full sync Interest: " << m_pendingEntries.size());
 
   for (auto it = m_pendingEntries.begin(); it != m_pendingEntries.end();) {
-    NDN_LOG_TRACE("Satisfying pending Interest: " << std::hash<ndn::Name>{}(it->first.getPrefix(-1)));
+    NDN_LOG_DEBUG("Satisfying pending Interest: " << std::hash<ndn::Name>{}(it->first));
+    NDN_LOG_TRACE("Sync Interest Name: " << std::hash<ndn::Name>{}(it->first));
     const auto& entry = it->second;
     auto diff = m_iblt - entry.iblt;
     NDN_LOG_TRACE("Decoded: " << diff.canDecode << " positive: " << diff.positive.size() <<

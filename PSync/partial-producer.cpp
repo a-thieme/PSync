@@ -28,10 +28,6 @@ namespace psync {
 
 NDN_LOG_INIT(psync.PartialProducer);
 
-const ndn::name::Component SYNC{"sync"};
-const ndn::name::Component DEFAULT{"DEFAULT"};
-
-
 PartialProducer::PartialProducer(ndn::Face& face,
                                  ndn::KeyChain& keyChain,
                                  const ndn::Name& syncPrefix,
@@ -49,7 +45,7 @@ PartialProducer::PartialProducer(ndn::Face& face,
     },
     [] (auto&&... args) { onRegisterFailed(std::forward<decltype(args)>(args)...); });
     // Add default stream at the start
-    addUserNode(ndn::Name(m_syncPrefix).append("DEFAULT"));
+    addUserNode(ndn::Name(m_syncPrefix).append(DEFAULT));
 }
 
 PartialProducer::PartialProducer(ndn::Face& face,
@@ -94,7 +90,7 @@ PartialProducer::publishName(const ndn::Name& prefix, std::optional<uint64_t> se
 
 void PartialProducer::updateDefaultSeqNo()
 {
-  const auto prefix = ndn::Name(m_syncPrefix).append("DEFAULT");
+  const auto prefix = ndn::Name(m_syncPrefix).append(DEFAULT);
   uint64_t newSeq = m_prefixes[prefix] + 1;
   NDN_LOG_INFO("Publish: " << prefix << "/" << newSeq);
   updateSeqNo(prefix, newSeq);
@@ -109,7 +105,7 @@ PartialProducer::onDefaultInterest(const ndn::Name& prefix, const ndn::Interest&
   }
 
   // Last component or fourth last component (in case of interest with version and segment)
-  // make sure "DEFAULT" is in the interest name
+  // make sure DEFAULT is in the interest name
   // todo: is this even needed? in what case would the interest name not be correct here?
   if (name.get(name.size() - 1) != DEFAULT && name.get(name.size() - 4) != DEFAULT) {
     NDN_LOG_WARN("Interest name " << name << " doesn't have " << DEFAULT);
@@ -143,8 +139,8 @@ PartialProducer::onSyncInterest(const ndn::Name& prefix, const ndn::Interest& in
   ndn::Name nameWithoutSyncPrefix = interest.getName().getSubName(prefix.size());
   ndn::Name interestName;
   NDN_LOG_DEBUG("full interest name " << interest.getName());
+  NDN_LOG_DEBUG("sync interest prefix " << prefix);
   NDN_LOG_DEBUG("name without prefix " << nameWithoutSyncPrefix);
-  NDN_LOG_DEBUG("prefix " << prefix);
 
   switch (nameWithoutSyncPrefix.size()) {
     case 4:
@@ -181,13 +177,12 @@ PartialProducer::onSyncInterest(const ndn::Name& prefix, const ndn::Interest& in
     NDN_LOG_DEBUG("iblt name: " << ibltName);
   }
   catch (const std::exception& e) {
-    NDN_LOG_ERROR("Cannot extract bloom filter and IBF from sync interest: " << e.what());
+    NDN_LOG_ERROR("Cannot extract subscription list and IBF from sync interest: " << e.what());
     NDN_LOG_ERROR("Format: /<syncPrefix>/sync/<BF-count>/<BF-false-positive-probability>/<BF>/<IBF>");
     return;
   }
 
   detail::BloomFilter bf;
-  detail::IBLT iblt(m_expectedNumEntries, m_ibltCompression);
   try {
     bf = detail::BloomFilter(projectedCount, falsePositiveProb, bfName);
   }
@@ -197,16 +192,16 @@ PartialProducer::onSyncInterest(const ndn::Name& prefix, const ndn::Interest& in
     return;
   }
 
-  try {
-    iblt.initialize(ibltName);
-  } catch (const std::exception& e) {
-    for (const auto c: ibltName.toUri()){
-      // fixme: this is an awful way to check for an empty bloom filter
-      if (c != '0' && c != '%') {
-        NDN_LOG_DEBUG("had exception in iblt bloom filter initialization");
-        NDN_LOG_WARN(e.what());
-        return;
-      }
+  detail::IBLT iblt(m_expectedNumEntries, m_ibltCompression);
+  if (ibltName == EMPTY_IBLT) {
+    NDN_LOG_TRACE("consumer is requesting new ibf or doesn't know producer parameters");
+  } else {
+    try {
+      iblt.initialize(ibltName);
+    } catch (const std::exception& e) {
+      NDN_LOG_DEBUG("had exception in iblt bloom filter initialization");
+      NDN_LOG_WARN(e.what());
+      return;
     }
   }
 
@@ -229,6 +224,7 @@ PartialProducer::onSyncInterest(const ndn::Name& prefix, const ndn::Interest& in
   NDN_LOG_TRACE("Size of positive set " << diff.positive.size());
   NDN_LOG_TRACE("Size of negative set " << diff.negative.size());
   for (const auto& hash : diff.positive) {
+    // full data stream name as /name/<seq no>
     auto nameIt = m_biMap.left.find(hash);
     if (nameIt != m_biMap.left.end()) {
       if (bf.contains(nameIt->second.getPrefix(-1))) {

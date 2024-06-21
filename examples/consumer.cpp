@@ -37,11 +37,11 @@ public:
    */
   PSyncConsumer(const ndn::Name& syncPrefix, int nSub)
     : m_nSub(nSub)
-    , m_consumer(m_face, syncPrefix, [this] {
+    , m_consumer(m_face, syncPrefix, [this, nSub] {
           psync::Consumer::Options opts;
           opts.onDefaultData = std::bind(&PSyncConsumer::afterReceiveHelloData, this, _1);
           opts.onUpdate = std::bind(&PSyncConsumer::processSyncUpdate, this, _1);
-          opts.bfCount = 15;
+          opts.bfCount = nSub;
           return opts;
       } ())
   {
@@ -72,12 +72,9 @@ private:
     // Randomly subscribe to m_nSub prefixes
     for (long unsigned int i = 0; i < (long unsigned)m_nSub && i < sensors.size(); i++) {
       ndn::Name prefix = sensors.at(i);
-      NDN_LOG_INFO("Subscribing to: " << prefix);
       // fixme maybe this should have sequence number from default stream?
-      // i feel like it should get the latest sequence number from sync
       if (!m_consumer.isSubscribed(prefix)){
-        NDN_LOG_DEBUG("is not subbed to: " << prefix);
-
+        NDN_LOG_INFO("Subscribing to: " << prefix);
         m_consumer.addSubscription(prefix, 0);
       }
     }
@@ -86,14 +83,15 @@ private:
     // The sync interest contains the subscription list
     // When new data is received for any subscribed prefix, processSyncUpdate is called
     // note: sync interests should already be scheduled
-//    m_consumer.sendSyncInterest();
+    // m_consumer.sendSyncInterest();
   }
 
   void
   processSyncUpdate(const std::vector<psync::MissingDataInfo>& updates)
   {
-    NDN_LOG_DEBUG("processSyncUpdate");
+    NDN_LOG_DEBUG("processSyncUpdate ");
     for (const auto& update : updates) {
+      NDN_LOG_DEBUG("prefix: " << update.prefix << " lowSeq " << update.lowSeq << " highSeq: " << update.highSeq << " face: " << update.incomingFace);
       for (uint64_t i = update.lowSeq; i <= update.highSeq; i++) {
         // Data can now be fetched using the prefix and sequence
         NDN_LOG_INFO("Update: " << update.prefix << "/" << i);
