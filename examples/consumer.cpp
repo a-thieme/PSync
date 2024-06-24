@@ -44,17 +44,13 @@ public:
           opts.bfCount = nSub;
           return opts;
       } ())
-  {
-    NDN_LOG_DEBUG("psync example constructor");
-    // This starts the consumer side by sending a hello interest to the producer
-    // When the producer responds with hello data, afterReceiveHelloData is called
-//    m_consumer.sendDefaultInterest();
-    m_consumer.sendSyncInterest();
-  }
+      {}
 
   void
   run()
   {
+    // This starts the consumer side by sending a sync interest to the producer
+    m_consumer.sendSyncInterest();
     m_face.processEvents();
   }
 
@@ -72,7 +68,6 @@ private:
     // Randomly subscribe to m_nSub prefixes
     for (long unsigned int i = 0; i < (long unsigned)m_nSub && i < sensors.size(); i++) {
       ndn::Name prefix = sensors.at(i);
-      // fixme maybe this should have sequence number from default stream?
       if (!m_consumer.isSubscribed(prefix)){
         NDN_LOG_INFO("Subscribing to: " << prefix);
         m_consumer.addSubscription(prefix, 0);

@@ -39,7 +39,11 @@ public:
    */
   PSyncPartialProducer(const ndn::Name& syncPrefix, const std::string& userPrefix,
                        int numDataStreams, int maxNumPublish)
-    : m_producer(m_face, m_keyChain, syncPrefix, {})
+    : m_producer(m_face, m_keyChain, syncPrefix, [numDataStreams, maxNumPublish] {
+      psync::PartialProducer::Options opts;
+      opts.ibfCount = numDataStreams * maxNumPublish;
+      return opts;
+    }())
     , m_maxNumPublish(maxNumPublish)
   {
     // Add user prefixes and schedule updates for them

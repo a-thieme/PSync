@@ -44,7 +44,7 @@ public:
     /// Expected number of entries in IBF.
     uint32_t ibfCount = 40;
     /// Compression scheme to use for IBF.
-    CompressionScheme ibfCompression = CompressionScheme::NONE;
+    CompressionScheme ibfCompression = CompressionScheme::DEFAULT;
     /// FreshnessPeriod of default Data.
     ndn::time::milliseconds defaultDataFreshness = DEFAULT_REPLY_FRESHNESS;
     /// FreshnessPeriod of sync Data.

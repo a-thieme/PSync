@@ -53,18 +53,16 @@ using ReceiveDefaultCallback = std::function<void(const std::vector<ndn::Name>&)
  *
  * Currently, fetching of the data needs to be handled by the application.
  */
-class Consumer
-{
+class Consumer {
 public:
   /**
    * @brief Constructor options.
    */
-  struct Options
-  {
+  struct Options {
     /// Callback to give default data back to application.
-    ReceiveDefaultCallback onDefaultData = [] (const auto&) {};
+    ReceiveDefaultCallback onDefaultData = [](const auto &) {};
     /// Callback to give sync data back to application.
-    UpdateCallback onUpdate = [] (const auto&) {};
+    UpdateCallback onUpdate = [](const auto &) {};
     /// Number of expected elements (subscriptions) in Bloom filter.
     uint32_t bfCount = 6;
     /// Bloom filter false positive probability.
@@ -82,13 +80,13 @@ public:
    * @param syncPrefix Prefix to send default and sync Interests to producer.
    * @param opts Options.
    */
-  Consumer(ndn::Face& face, const ndn::Name& syncPrefix, const Options& opts);
+  Consumer(ndn::Face &face, const ndn::Name &syncPrefix, const Options &opts);
 
   [[deprecated]]
-  Consumer(const ndn::Name& syncPrefix,
-           ndn::Face& face,
-           const ReceiveDefaultCallback& onReceiveDefaultData,
-           const UpdateCallback& onUpdate,
+  Consumer(const ndn::Name &syncPrefix,
+           ndn::Face &face,
+           const ReceiveDefaultCallback &onReceiveDefaultData,
+           const UpdateCallback &onUpdate,
            unsigned int count,
            double falsePositive = 0.001,
            ndn::time::milliseconds defaultInterestLifetime = DEFAULT_INTEREST_LIFETIME,
@@ -123,7 +121,7 @@ public:
    * @return true if prefix is added, false if it is already present
    */
   bool
-  addSubscription(const ndn::Name& prefix, uint64_t seqNo, bool callSyncDataCb = true);
+  addSubscription(const ndn::Name &prefix, uint64_t seqNo, bool callSyncDataCb = true);
 
   /**
    * @brief Remove prefix from subscription list
@@ -132,23 +130,20 @@ public:
    * @return true if prefix is removed, false if it is not present
    */
   bool
-  removeSubscription(const ndn::Name& prefix);
+  removeSubscription(const ndn::Name &prefix);
 
-  std::set<ndn::Name>
-  getSubscriptionList() const
-  {
+  std::set <ndn::Name>
+  getSubscriptionList() const {
     return m_subscriptionList;
   }
 
   bool
-  isSubscribed(const ndn::Name& prefix) const
-  {
+  isSubscribed(const ndn::Name &prefix) const {
     return m_subscriptionList.find(prefix) != m_subscriptionList.end();
   }
 
-  std::optional<uint64_t>
-  getSeqNo(const ndn::Name& prefix) const
-  {
+  std::optional <uint64_t>
+  getSeqNo(const ndn::Name &prefix) const {
     auto it = m_prefixes.find(prefix);
     if (it == m_prefixes.end()) {
       return std::nullopt;
@@ -176,7 +171,7 @@ private:
    * @param bufferPtr Default data content
    */
   void
-  onDefaultData(const ndn::ConstBufferPtr& bufferPtr);
+  onDefaultData(const ndn::ConstBufferPtr &bufferPtr);
 
   /**
    * @brief Get Default data from the producer
@@ -189,21 +184,20 @@ private:
    * @param bufferPtr sync data content
    */
   void
-  onSyncData(const ndn::ConstBufferPtr& bufferPtr);
+  onSyncData(const ndn::ConstBufferPtr &bufferPtr);
 
   void
-  onDefaultStreamData(const ndn::ConstBufferPtr& bufferPtr);
+  onDefaultStreamData(const ndn::ConstBufferPtr &bufferPtr);
 
 PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
-  ndn::Face& m_face;
+  ndn::Face &m_face;
   ndn::Scheduler m_scheduler;
 
   ndn::Name m_syncPrefix;
   ndn::Name m_defaultInterestPrefix;
   ndn::Name m_syncInterestPrefix;
   ndn::name::Component m_iblt;
-  ndn::name::Component m_ibltExpectedCount;
-  ndn::name::Component m_ibltCompression;
+  bool m_sendEmptyIBLT;
   ndn::Name m_defaultDataName;
   ndn::Name m_syncDataName;
   uint32_t m_syncDataContentType;
@@ -220,13 +214,21 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   ndn::time::milliseconds m_syncInterestLifetime;
 
   // Store sequence number for the prefix.
-  std::map<ndn::Name, uint64_t> m_prefixes;
-  std::set<ndn::Name> m_subscriptionList;
+  std::map <ndn::Name, uint64_t> m_prefixes;
+  std::set <ndn::Name> m_subscriptionList;
 
-  ndn::random::RandomNumberEngine& m_rng;
+  ndn::random::RandomNumberEngine &m_rng;
   std::uniform_int_distribution<> m_rangeUniformRandom;
-  std::shared_ptr<ndn::SegmentFetcher> m_defaultFetcher;
-  std::shared_ptr<ndn::SegmentFetcher> m_syncFetcher;
+  std::shared_ptr <ndn::SegmentFetcher> m_defaultFetcher;
+  std::shared_ptr <ndn::SegmentFetcher> m_syncFetcher;
+
+  // copied from full-producer.cpp
+  uint64_t m_incomingFace = 0;
+  static inline constexpr ndn::time::milliseconds MIN_JITTER = -1 / 2 * SYNC_INTEREST_LIFETIME;
+  static inline constexpr ndn::time::milliseconds MAX_JITTER = 1 / 2 * SYNC_INTEREST_LIFETIME;
+  std::uniform_int_distribution<> m_jitter{MIN_JITTER.count(), MAX_JITTER.count()};
+  ndn::time::system_clock::time_point m_lastInterestSentTime;
+  ndn::Name m_outstandingInterestName;
 };
 
 } // namespace psync

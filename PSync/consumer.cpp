@@ -20,6 +20,7 @@
 #include "PSync/consumer.hpp"
 #include "PSync/detail/state.hpp"
 
+#include <ndn-cxx/lp/tags.hpp>
 #include <ndn-cxx/security/validator-null.hpp>
 #include <ndn-cxx/util/logger.hpp>
 
@@ -195,14 +196,36 @@ Consumer::sendSyncInterest()
   m_bloomFilter.appendToName(syncInterestName);
 
   // /sync/sync/<SL>/<IBF>/
-  if (m_iblt.empty()) {
-    // Append empty IBF
+  if (m_sendEmptyIBLT) {
+    // doing it this way instead of as function parameter because we would then
+    // have multiple function calls to sendSyncInterest, resulting in sending them
+    // more often than we want. We have suppression code to help in these cases,
+    // if they do happen
+
+    // we're not just changing m_iblt because getting new sync data after m_iblt
+    // is set to EMPTY_IBLT but before that interest is sent with EMPTY_IBLT will
+    // override the empty value and we won't get all the sequence numbers we need.
+
+    // when m_sendEmptyIBLT is set to true, it should result in only one sync
+    // interest being sent with the empty IBLT
     syncInterestName.append(EMPTY_IBLT);
+    m_sendEmptyIBLT = false;
   } else {
     // Append IBF received in default/sync data
     syncInterestName.append(m_iblt);
   }
 
+  auto currentTime = ndn::time::system_clock::now();
+  if ((currentTime - m_lastInterestSentTime < MIN_JITTER + SYNC_INTEREST_LIFETIME/2) &&
+      (m_outstandingInterestName == syncInterestName)) {
+    NDN_LOG_TRACE("Suppressing Interest: " << std::hash<ndn::Name>{}(syncInterestName));
+    return;
+  }
+
+  m_scheduler.schedule(m_syncInterestLifetime / 2 + ndn::time::milliseconds(m_jitter(m_rng)),
+                           [this] { sendSyncInterest(); });
+
+  m_outstandingInterestName = syncInterestName;
   ndn::Interest syncInterest(syncInterestName);
 
   NDN_LOG_TRACE("sendSyncInterest, nonce: " << syncInterest.getNonce() <<
@@ -219,26 +242,35 @@ Consumer::sendSyncInterest()
   options.maxTimeout = m_syncInterestLifetime;
   options.rttOptions.initialRto = m_syncInterestLifetime;
 
+  m_lastInterestSentTime = currentTime;
   m_syncFetcher = SegmentFetcher::start(m_face, syncInterest,
                                         ndn::security::getAcceptAllValidator(), options);
 
   m_syncFetcher->afterSegmentValidated.connect([this] (const ndn::Data& data) {
+    // copied from full-producer.cpp
+    auto tag = data.getTag<ndn::lp::IncomingFaceIdTag>();
+    if (tag) {
+      m_incomingFace = *tag;
+    }
+    else {
+      m_incomingFace = 0;
+    }
     if (data.getFinalBlock()) {
       m_syncDataName = data.getName().getPrefix(-2);
       NDN_LOG_TRACE("sync data name: " << m_syncDataName);
       m_syncDataContentType = data.getContentType();
+      NDN_LOG_TRACE("sync data content type: " << m_syncDataContentType);
     }
 
     if (m_syncDataContentType == ndn::tlv::ContentType_Nack) {
-      NDN_LOG_DEBUG("Producer couldn't decode the difference, sending default again");
-      // todo: make sure consumer onSyncData can handle "updates" that have already been fetched
-      m_iblt = EMPTY_IBLT;
-      sendDefaultInterest();
+      NDN_LOG_WARN("Producer couldn't decode the difference, sending sync interest with empty IBF");
+      m_sendEmptyIBLT = true;
     }
   });
 
   m_syncFetcher->onComplete.connect([this] (const ndn::ConstBufferPtr& bufferPtr) {
     if (m_syncDataContentType == ndn::tlv::ContentType_Nack) {
+      NDN_LOG_TRACE("Segment fetcher completed with content type NACK");
       m_syncDataContentType = ndn::tlv::ContentType_Blob;
       return;
     }
@@ -248,9 +280,8 @@ Consumer::sendSyncInterest()
 
   m_syncFetcher->onError.connect([this] (uint32_t errorCode, const std::string& msg) {
     if (errorCode == SegmentFetcher::ErrorCode::INTEREST_TIMEOUT) {
-      // expected behavior if no update in SYNC_INTEREST_LIFETIME seconds
+      // see full-producer.cpp for explanation
       NDN_LOG_TRACE("sync interest timed out");
-      sendSyncInterest();
     } else {
       // warn because something else went wrong
       NDN_LOG_WARN("Cannot fetch sync data, error: " << errorCode << " message: " << msg);
@@ -303,8 +334,6 @@ Consumer::onSyncData(const ndn::ConstBufferPtr& bufferPtr)
   if (!updates.empty()) {
     m_onUpdate(updates);
   }
-
-  sendSyncInterest();
 }
 
 } // namespace psync

@@ -70,7 +70,6 @@ struct MissingDataInfo
   ndn::Name prefix;
   uint64_t lowSeq;
   uint64_t highSeq;
-  // fixme: this is never set to anything other than 0
   uint64_t incomingFace;
 };
 
