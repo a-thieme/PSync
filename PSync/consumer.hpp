@@ -60,7 +60,7 @@ public:
    */
   struct Options {
     /// Callback to give default data back to application.
-    ReceiveDefaultCallback onDefaultData = [](const auto &) {};
+    ReceiveDefaultCallback onDefaultStreamData = [](const auto &) {};
     /// Callback to give sync data back to application.
     UpdateCallback onUpdate = [](const auto &) {};
     /// Number of expected elements (subscriptions) in Bloom filter.
@@ -92,13 +92,6 @@ public:
            ndn::time::milliseconds defaultInterestLifetime = DEFAULT_INTEREST_LIFETIME,
            ndn::time::milliseconds syncInterestLifetime = SYNC_INTEREST_LIFETIME);
 
-  /**
-   * @brief send Default interest /<sync-prefix>/DEFAULT/
-   *
-   * Should be called by the application whenever it wants to send a Default
-   */
-  void
-  sendDefaultInterest();
 
   /**
    * @brief send sync interest /<sync-prefix>/sync/\<BF\>/\<producers-IBF\>
@@ -121,7 +114,7 @@ public:
    * @return true if prefix is added, false if it is already present
    */
   bool
-  addSubscription(const ndn::Name &prefix, uint64_t seqNo, bool callSyncDataCb = true);
+  addSubscription(const ndn::Name &prefix);
 
   /**
    * @brief Remove prefix from subscription list
@@ -132,24 +125,11 @@ public:
   bool
   removeSubscription(const ndn::Name &prefix);
 
-  std::set <ndn::Name>
-  getSubscriptionList() const {
-    return m_subscriptionList;
-  }
+  std::set <ndn::Name> getSubscriptionList();
 
-  bool
-  isSubscribed(const ndn::Name &prefix) const {
-    return m_subscriptionList.find(prefix) != m_subscriptionList.end();
-  }
+  bool isSubscribed(const ndn::Name &prefix);
 
-  std::optional <uint64_t>
-  getSeqNo(const ndn::Name &prefix) const {
-    auto it = m_prefixes.find(prefix);
-    if (it == m_prefixes.end()) {
-      return std::nullopt;
-    }
-    return it->second;
-  }
+  std::optional <uint64_t> getSeqNo(const ndn::Name &prefix);
 
   /**
    * @brief Stop segment fetcher to stop the sync and free resources
@@ -158,6 +138,13 @@ public:
   stop();
 
 private:
+
+  /**
+   * @brief send Default interest /<sync-prefix>/DEFAULT/
+   */
+  void
+  sendDefaultInterest();
+
   /**
    * @brief Get Default data from the producer
    *
@@ -171,7 +158,7 @@ private:
    * @param bufferPtr Default data content
    */
   void
-  onDefaultData(const ndn::ConstBufferPtr &bufferPtr);
+  onDefaultStreamData(const ndn::ConstBufferPtr &bufferPtr);
 
   /**
    * @brief Get Default data from the producer
@@ -186,19 +173,15 @@ private:
   void
   onSyncData(const ndn::ConstBufferPtr &bufferPtr);
 
-  void
-  onDefaultStreamData(const ndn::ConstBufferPtr &bufferPtr);
-
 PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   ndn::Face &m_face;
   ndn::Scheduler m_scheduler;
 
   ndn::Name m_syncPrefix;
-  ndn::Name m_defaultInterestPrefix;
+  ndn::Name m_defaultStreamPrefix;
   ndn::Name m_syncInterestPrefix;
   ndn::name::Component m_iblt;
   bool m_sendEmptyIBLT;
-  ndn::Name m_defaultDataName;
   ndn::Name m_syncDataName;
   uint32_t m_syncDataContentType;
 
@@ -219,7 +202,7 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
 
   ndn::random::RandomNumberEngine &m_rng;
   std::uniform_int_distribution<> m_rangeUniformRandom;
-  std::shared_ptr <ndn::SegmentFetcher> m_defaultFetcher;
+  std::shared_ptr <ndn::SegmentFetcher> m_defaultStreamFetcher;
   std::shared_ptr <ndn::SegmentFetcher> m_syncFetcher;
 
   // copied from full-producer.cpp

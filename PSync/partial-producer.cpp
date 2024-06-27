@@ -99,20 +99,22 @@ void PartialProducer::updateDefaultSeqNo()
 void
 PartialProducer::onDefaultInterest(const ndn::Name& prefix, const ndn::Interest& interest)
 {
+  NDN_LOG_WARN("Default Interest Received: " << interest);
   const auto& name = interest.getName();
+  auto seq = getSeqNo(name.getPrefix(-1));
+  if (!seq.has_value()) {
+    NDN_LOG_WARN("Got interest for default stream before it has a sequence number");
+    return;
+  }
+  auto seqFromInterest = name.get(-1).toNumber();
+  if (seqFromInterest != seq.value()) {
+    NDN_LOG_WARN("Got interest for default stream with sequence number " << seqFromInterest << " that does not match the latest sequence number " << seq.value());
+    return;
+  }
+
   if (m_segmentPublisher.replyFromStore(name)) {
     return;
   }
-
-  // Last component or fourth last component (in case of interest with version and segment)
-  // make sure DEFAULT is in the interest name
-  // todo: is this even needed? in what case would the interest name not be correct here?
-  if (name.get(name.size() - 1) != DEFAULT && name.get(name.size() - 4) != DEFAULT) {
-    NDN_LOG_WARN("Interest name " << name << " doesn't have " << DEFAULT);
-    return;
-  }
-
-  NDN_LOG_DEBUG("Default Interest Received: " << interest);
 
   detail::State state;
   for (const auto& p : m_prefixes) {
@@ -120,9 +122,8 @@ PartialProducer::onDefaultInterest(const ndn::Name& prefix, const ndn::Interest&
   }
   NDN_LOG_DEBUG("sending content: " << state);
 
-  m_segmentPublisher.publish(interest.getName(), prefix,
+  m_segmentPublisher.publish(interest.getName(), name,
                              state.wireEncode(), m_defaultReplyFreshness);
-
 }
 
 

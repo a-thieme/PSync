@@ -39,12 +39,11 @@ public:
     : m_nSub(nSub)
     , m_consumer(m_face, syncPrefix, [this, nSub] {
           psync::Consumer::Options opts;
-          opts.onDefaultData = std::bind(&PSyncConsumer::afterReceiveHelloData, this, _1);
+          opts.onDefaultStreamData = std::bind(&PSyncConsumer::afterReceiveHelloData, this, _1);
           opts.onUpdate = std::bind(&PSyncConsumer::processSyncUpdate, this, _1);
           opts.bfCount = nSub;
           return opts;
-      } ())
-      {}
+      } ()) {}
 
   void
   run()
@@ -65,12 +64,12 @@ private:
     }
     std::shuffle(sensors.begin(), sensors.end(), m_rng);
 
-    // Randomly subscribe to m_nSub prefixes
+    // semi-randomly subscribe to m_nSub prefixes
     for (long unsigned int i = 0; i < (long unsigned)m_nSub && i < sensors.size(); i++) {
       ndn::Name prefix = sensors.at(i);
       if (!m_consumer.isSubscribed(prefix)){
         NDN_LOG_INFO("Subscribing to: " << prefix);
-        m_consumer.addSubscription(prefix, 0);
+        m_consumer.addSubscription(prefix);
       }
     }
 

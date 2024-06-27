@@ -40,8 +40,8 @@ BOOST_AUTO_TEST_CASE(AddSubscription)
   Name subscription("test");
 
   BOOST_CHECK(!consumer.isSubscribed(subscription));
-  BOOST_CHECK(consumer.addSubscription(subscription, 0));
-  BOOST_CHECK(!consumer.addSubscription(subscription, 0));
+  BOOST_CHECK(consumer.addSubscription(subscription));
+  BOOST_CHECK(!consumer.addSubscription(subscription));
 }
 
 BOOST_AUTO_TEST_CASE(RemoveSubscription)
@@ -52,7 +52,7 @@ BOOST_AUTO_TEST_CASE(RemoveSubscription)
   Consumer consumer(face, "/psync", opts);
 
   Name subscription("test");
-  consumer.addSubscription(subscription, 0);
+  consumer.addSubscription(subscription);
 
   BOOST_CHECK(consumer.isSubscribed(subscription));
   BOOST_CHECK(consumer.removeSubscription(subscription));

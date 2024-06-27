@@ -35,10 +35,10 @@ namespace psync {
 
 using namespace ndn::time_literals;
 
-inline constexpr ndn::time::milliseconds DEFAULT_INTEREST_LIFETIME = 1_s;
-inline constexpr ndn::time::milliseconds DEFAULT_REPLY_FRESHNESS = 1_s;
-inline constexpr ndn::time::milliseconds SYNC_INTEREST_LIFETIME = 1_s;
-inline constexpr ndn::time::milliseconds SYNC_REPLY_FRESHNESS = 1_s;
+inline constexpr ndn::time::milliseconds DEFAULT_INTEREST_LIFETIME = 4_s;
+inline constexpr ndn::time::milliseconds DEFAULT_REPLY_FRESHNESS = 4_s;
+inline constexpr ndn::time::milliseconds SYNC_INTEREST_LIFETIME = 4_s;
+inline constexpr ndn::time::milliseconds SYNC_REPLY_FRESHNESS = 4_s;
 
 enum class CompressionScheme {
   NONE,
