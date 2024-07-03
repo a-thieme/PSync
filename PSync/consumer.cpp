@@ -24,6 +24,12 @@
 #include <ndn-cxx/security/validator-null.hpp>
 #include <ndn-cxx/util/logger.hpp>
 
+#include <string>
+#include <fstream>
+#include <pwd.h>
+#include <cstdlib>
+#include <unistd.h>
+
 namespace psync {
 
 NDN_LOG_INIT(psync.Consumer);
@@ -59,6 +65,32 @@ Consumer::Consumer(const ndn::Name& syncPrefix,
                      defaultInterestLifetime, syncInterestLifetime})
 {
 }
+
+
+void
+Consumer::writeSeqNoToFile( const std::optional <uint64_t> seq)
+{
+  m_seqFileNameWithPath = "";
+
+  if (m_seqFileNameWithPath.empty()) {
+    std::string homeDirPath(getpwuid(getuid())->pw_dir);
+    if (homeDirPath.empty()) {
+      homeDirPath = getenv("HOME");
+    }
+    m_seqFileNameWithPath = homeDirPath;
+  }
+  m_seqFileNameWithPath = m_seqFileNameWithPath + "/pSyncSeqNo.txt";
+  NDN_LOG_DEBUG("path is " << m_seqFileNameWithPath);
+
+  std::ofstream outputFile(m_seqFileNameWithPath.c_str());
+  std::ostringstream os;
+  os << "Seq No " <<  (seq.has_value() ? std::to_string(seq.value()) : "N/A") << "\n";
+  outputFile << os.str();
+
+  outputFile.close();
+}
+
+
 
 bool
 Consumer::addSubscription(const ndn::Name& prefix)
@@ -136,6 +168,8 @@ void
 Consumer::sendDefaultInterest()
 {
   auto seq = getSeqNo(m_defaultStreamPrefix);
+// write current Seq number to file.
+  writeSeqNoToFile(seq);
   if (!seq.has_value()){
     NDN_LOG_WARN("default stream prefix does not have sequence number but sendDefaultInterest was called");
     return;
