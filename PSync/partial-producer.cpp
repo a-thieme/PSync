@@ -23,6 +23,7 @@
 #include <ndn-cxx/util/logger.hpp>
 
 #include <cstring>
+#include <fstream>
 
 namespace psync {
 
@@ -35,19 +36,32 @@ PartialProducer::PartialProducer(ndn::Face& face,
   : ProducerBase(face, keyChain, opts.ibfCount, syncPrefix, opts.syncDataFreshness,
                  opts.ibfCompression, CompressionScheme::NONE)
   , m_defaultReplyFreshness(opts.defaultDataFreshness)
+  , m_defaultStreamName(ndn::Name(m_syncPrefix).append(DEFAULT))
+  , m_seqFilename("/var/lib/psync")
+//    , m_seqFilename("/var/lib/psync" + m_defaultStreamName.toUri())
 {
   m_registeredPrefix = m_face.registerPrefix(m_syncPrefix,
-    [this] (const auto&) {
-      m_face.setInterestFilter(ndn::Name(m_syncPrefix).append(SYNC),
-                               std::bind(&PartialProducer::onSyncInterest, this, _1, _2));
-      m_face.setInterestFilter(ndn::Name(m_syncPrefix).append(DEFAULT),
-                               std::bind(&PartialProducer::onDefaultInterest, this, _1, _2));
-    },
-    [] (auto&&... args) { onRegisterFailed(std::forward<decltype(args)>(args)...); });
-    // Add default stream at the start
-    addUserNode(ndn::Name(m_syncPrefix).append(DEFAULT));
+                                             [this] (const auto &) {
+                                               m_face.setInterestFilter(ndn::Name(m_syncPrefix).append(SYNC),
+                                                                        std::bind(&PartialProducer::onSyncInterest,
+                                                                                  this, _1, _2));
+                                               m_face.setInterestFilter(m_defaultStreamName,
+                                                                        std::bind(&PartialProducer::onDefaultInterest,
+                                                                                  this, _1, _2));
+                                             },
+                                             [](auto &&... args) {
+                                               onRegisterFailed(std::forward<decltype(args)>(args)...);
+                                             });
+  // add default stream to our list of available streams
+  ProducerBase::addUserNode(m_defaultStreamName);
+  NDN_LOG_DEBUG("publish default stream with possible sequence number from file");
+  publishName(m_defaultStreamName, getDefaultSeqFromFile());
+  // given the last sequence number n, the default stream should start with sequence number n + 1.
+  // if the DEFAULT macro and syncPrefix parameter aren't changed, this will result in the same data
+  // (just the default stream name) being published under different names
 }
 
+// todo: this constructor just doesn't work anymore
 PartialProducer::PartialProducer(ndn::Face& face,
                                  ndn::KeyChain& keyChain,
                                  size_t expectedNumEntries,
@@ -69,16 +83,44 @@ PartialProducer::addUserNode(const ndn::Name& prefix)
   // NDN_LOG_INFO("Add user Node: " << prefix );
   bool result = ProducerBase::addUserNode(prefix);
   if (result) {
-    updateDefaultSeqNo();
+    publishName(m_defaultStreamName, std::nullopt);
   }
   return result;
 }
 
+std::optional<uint64_t>
+PartialProducer::getDefaultSeqFromFile() {
+  std::ifstream inputFile(m_seqFilename);
+  if (!inputFile.good() || !inputFile.is_open()) {
+    NDN_LOG_DEBUG("could not open file " << m_seqFilename << " to parse sequence number for default stream");
+    return std::nullopt;
+  }
+  std::string line;
+  std::getline(inputFile, line);
+  inputFile.close();
+  // we don't want to publish under the same sequence number as before, so we are adding one
+  NDN_LOG_DEBUG("Read sequence number " << line << " from file");
+  return atoi(line.c_str()) + 1;
+}
+
+bool
+PartialProducer::writeDefaultSeqToFile(const uint64_t &seq) {
+  std::ofstream outFile (m_seqFilename);
+  if (!outFile.good() || !outFile.is_open()) {
+    NDN_LOG_DEBUG("could not open file " << m_seqFilename << " to write sequence number for default stream");
+    return false;
+  }
+  outFile << seq;
+  outFile.close();
+  NDN_LOG_DEBUG("tried to write seq " << seq << " to file");
+  return true;
+}
 
 void
 PartialProducer::publishName(const ndn::Name& prefix, std::optional<uint64_t> seq)
 {
   if (m_prefixes.find(prefix) == m_prefixes.end()) {
+    NDN_LOG_WARN("Tried to publish name " << prefix << "but it is not in m_prefixes");
     return;
   }
 
@@ -86,14 +128,9 @@ PartialProducer::publishName(const ndn::Name& prefix, std::optional<uint64_t> se
   NDN_LOG_INFO("Publish: " << prefix << "/" << newSeq);
   updateSeqNo(prefix, newSeq);
   satisfyPendingSyncInterests(prefix);
-}
-
-void PartialProducer::updateDefaultSeqNo()
-{
-  const auto prefix = ndn::Name(m_syncPrefix).append(DEFAULT);
-  uint64_t newSeq = m_prefixes[prefix] + 1;
-  NDN_LOG_INFO("Publish: " << prefix << "/" << newSeq);
-  updateSeqNo(prefix, newSeq);
+  if (prefix.equals(m_defaultStreamName)) {
+    writeDefaultSeqToFile(newSeq);
+  }
 }
 
 void
@@ -111,7 +148,6 @@ PartialProducer::onDefaultInterest(const ndn::Name& prefix, const ndn::Interest&
     NDN_LOG_WARN("Got interest for default stream with sequence number " << seqFromInterest << " that does not match the latest sequence number " << seq.value());
     return;
   }
-
   if (m_segmentPublisher.replyFromStore(name)) {
     return;
   }
@@ -122,7 +158,7 @@ PartialProducer::onDefaultInterest(const ndn::Name& prefix, const ndn::Interest&
   }
   NDN_LOG_DEBUG("sending content: " << state);
 
-  m_segmentPublisher.publish(interest.getName(), name,
+  m_segmentPublisher.publish(name, name,
                              state.wireEncode(), m_defaultReplyFreshness);
 }
 

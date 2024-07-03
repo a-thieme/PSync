@@ -129,10 +129,6 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
 
   void 
   onDefaultInterest(const ndn::Name& prefix, const ndn::Interest& interest);
-  
-  void
-  updateDefaultSeqNo();
-
 
 PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   struct PendingEntryInfo
@@ -145,6 +141,15 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   std::map<ndn::Name, PendingEntryInfo> m_pendingEntries;
   ndn::ScopedRegisteredPrefixHandle m_registeredPrefix;
   ndn::time::milliseconds m_defaultReplyFreshness;
+
+  ndn::Name m_defaultStreamName;
+
+  std::string m_seqFilename;
+  std::optional<uint64_t>
+  getDefaultSeqFromFile();
+
+  bool
+  writeDefaultSeqToFile(const uint64_t &seq);
 };
 
 } // namespace psync
