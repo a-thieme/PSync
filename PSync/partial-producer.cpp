@@ -24,6 +24,7 @@
 
 #include <cstring>
 #include <fstream>
+#include <sys/stat.h>
 
 namespace psync {
 
@@ -37,7 +38,7 @@ PartialProducer::PartialProducer(ndn::Face& face,
                  opts.ibfCompression, CompressionScheme::NONE)
   , m_defaultReplyFreshness(opts.defaultDataFreshness)
   , m_defaultStreamName(ndn::Name(m_syncPrefix).append(DEFAULT))
-  , m_seqFilename("/var/lib/psync")
+  // , m_seqFilename("/var/lib/psync")
 //    , m_seqFilename("/var/lib/psync" + m_defaultStreamName.toUri())
 {
   m_registeredPrefix = m_face.registerPrefix(m_syncPrefix,
@@ -90,6 +91,7 @@ PartialProducer::addUserNode(const ndn::Name& prefix)
 
 std::optional<uint64_t>
 PartialProducer::getDefaultSeqFromFile() {
+
   std::ifstream inputFile(m_seqFilename);
   if (!inputFile.good() || !inputFile.is_open()) {
     NDN_LOG_DEBUG("could not open file " << m_seqFilename << " to parse sequence number for default stream");
@@ -101,20 +103,49 @@ PartialProducer::getDefaultSeqFromFile() {
   // we don't want to publish under the same sequence number as before, so we are adding one
   NDN_LOG_DEBUG("Read sequence number " << line << " from file");
   return atoi(line.c_str()) + 1;
+
 }
 
 bool
 PartialProducer::writeDefaultSeqToFile(const uint64_t &seq) {
-  std::ofstream outFile (m_seqFilename);
-  if (!outFile.good() || !outFile.is_open()) {
+
+ // find home directory  
+  const char* homeDir = getenv("HOME");
+  if (homeDir == nullptr) {
+      NDN_LOG_DEBUG("Home directory variable not set");
+      return false;
+  }
+  // get path to psync directory
+  std::string path = std::string(homeDir) + "/.ndn/psync/";
+  struct stat info;
+  if (stat(path.c_str(), &info) != 0) {
+    //create directory if not exist
+    mkdir(path.c_str(), 0755);
+  }
+  // replace / with -
+  std::string file_name = m_defaultStreamName.toUri();
+  for (char& ch : file_name) {
+    if (ch == '/') {
+        ch = '-';
+    }
+  }
+  if (!file_name.empty() && file_name[0] == '-') {
+        file_name.erase(0, 1);
+  }
+  m_seqFilename = path + file_name +".txt";
+
+  std::ofstream outputFile(m_seqFilename.c_str());
+
+  if (!outputFile.good() || !outputFile.is_open()) {
     NDN_LOG_DEBUG("could not open file " << m_seqFilename << " to write sequence number for default stream");
     return false;
   }
-  outFile << seq;
-  outFile.close();
+  outputFile << seq;
+  outputFile.close();
   NDN_LOG_DEBUG("tried to write seq " << seq << " to file");
   return true;
 }
+
 
 void
 PartialProducer::publishName(const ndn::Name& prefix, std::optional<uint64_t> seq)

@@ -101,12 +101,6 @@ public:
   void
   sendSyncInterest();
 
- /**
-   * @brief save latest sequence number to a text file
-   */
-  void 
-  writeSeqNoToFile(const std::optional <uint64_t> );
-
   /**
    * @brief Add prefix to subscription list
    *
@@ -135,7 +129,7 @@ public:
 
   bool isSubscribed(const ndn::Name &prefix);
 
-  std::optional <uint64_t> getSeqNo(const ndn::Name &prefix);
+  std::optional<uint64_t> getSeqNo(const ndn::Name &prefix);
 
   /**
    * @brief Stop segment fetcher to stop the sync and free resources
@@ -218,7 +212,6 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   std::uniform_int_distribution<> m_jitter{MIN_JITTER.count(), MAX_JITTER.count()};
   ndn::time::system_clock::time_point m_lastInterestSentTime;
   ndn::Name m_outstandingInterestName;
-  std::string m_seqFileNameWithPath;
 };
 
 } // namespace psync
