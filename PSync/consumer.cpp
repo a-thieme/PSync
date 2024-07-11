@@ -24,6 +24,13 @@
 #include <ndn-cxx/security/validator-null.hpp>
 #include <ndn-cxx/util/logger.hpp>
 
+#include <string>
+#include <fstream>
+#include <pwd.h>
+#include <cstdlib>
+#include <unistd.h>
+#include <sys/stat.h>
+
 namespace psync {
 
 NDN_LOG_INIT(psync.Consumer);
@@ -59,6 +66,49 @@ Consumer::Consumer(const ndn::Name& syncPrefix,
                      defaultInterestLifetime, syncInterestLifetime})
 {
 }
+
+
+
+
+void
+Consumer::writeSeqNoToFile( const std::optional <uint64_t> seq)
+{
+
+  // find home directory  
+  const char* homeDir = getenv("HOME");
+  if (homeDir == nullptr) {
+      NDN_LOG_DEBUG("Home directory variable not set");
+      return;
+  }
+  // get path to psync directory
+  std::string path = std::string(homeDir) + "/.ndn/psync/";
+  struct stat info;
+  if (stat(path.c_str(), &info) != 0) {
+    //create directory if not exist
+    mkdir(path.c_str(), 0755);
+  }
+  // replace / with -
+  std::string file_name = m_syncPrefix.toUri();
+  for (char& ch : file_name) {
+    if (ch == '/') {
+        ch = '-';
+    }
+  }
+  if (!file_name.empty() && file_name[0] == '-') {
+        file_name.erase(0, 1);
+  }
+
+  m_seqFileNameWithPath = path + file_name +".txt";
+
+  std::ofstream outputFile(m_seqFileNameWithPath.c_str());
+  std::ostringstream os;
+  os << "Seq No " <<  (seq.has_value() ? std::to_string(seq.value()) : "N/A") << "\n";
+  outputFile << os.str();
+  NDN_LOG_DEBUG("inserted seq no to file" << m_seqFileNameWithPath);
+
+  outputFile.close();
+}
+
 
 bool
 Consumer::addSubscription(const ndn::Name& prefix)
@@ -136,6 +186,8 @@ void
 Consumer::sendDefaultInterest()
 {
   auto seq = getSeqNo(m_defaultStreamPrefix);
+// write current Seq number to file.
+  writeSeqNoToFile(seq);
   if (!seq.has_value()){
     NDN_LOG_WARN("default stream prefix does not have sequence number but sendDefaultInterest was called");
     return;
