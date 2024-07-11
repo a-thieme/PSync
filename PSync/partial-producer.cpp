@@ -103,7 +103,6 @@ PartialProducer::getDefaultSeqFromFile() {
   // we don't want to publish under the same sequence number as before, so we are adding one
   NDN_LOG_DEBUG("Read sequence number " << line << " from file");
   return atoi(line.c_str()) + 1;
-
 }
 
 bool
