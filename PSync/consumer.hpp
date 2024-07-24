@@ -136,14 +136,15 @@ public:
    */
   void
   stop();
-
-private:
-
+  
   /**
    * @brief send Default interest /<sync-prefix>/DEFAULT/
    */
   void
   sendDefaultInterest();
+
+private:
+
 
   /**
    * @brief Get Default data from the producer
