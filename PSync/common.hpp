@@ -54,10 +54,10 @@ enum class CompressionScheme {
 #endif
 };
 
-  const ndn::name::Component EMPTY_IBLT{"0"};
+  const ndn::name::Component EMPTY_IBLT{"empty-ibf"};
   const ndn::name::Component SYNC{"sync"};
   // todo: maybe change this because DEFAULT may be used elsewhere in the code
-  const ndn::name::Component DEFAULT{"DEFAULT"};
+  const ndn::name::Component DEFAULT{"default"};
 
 class CompressionError : public std::runtime_error
 {
