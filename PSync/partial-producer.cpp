@@ -56,6 +56,7 @@ PartialProducer::PartialProducer(ndn::Face& face,
   // add default stream to our list of available streams
   ProducerBase::addUserNode(m_defaultStreamName);
   NDN_LOG_DEBUG("publish default stream with possible sequence number from file");
+  setDefaultSeqFileName();
   publishName(m_defaultStreamName, getDefaultSeqFromFile());
   // given the last sequence number n, the default stream should start with sequence number n + 1.
   // if the DEFAULT macro and syncPrefix parameter aren't changed, this will result in the same data
@@ -105,14 +106,13 @@ PartialProducer::getDefaultSeqFromFile() {
   return atoi(line.c_str()) + 1;
 }
 
-bool
-PartialProducer::writeDefaultSeqToFile(const uint64_t &seq) {
+void
+PartialProducer::setDefaultSeqFileName(){
 
  // find home directory  
   const char* homeDir = getenv("HOME");
   if (homeDir == nullptr) {
       NDN_LOG_DEBUG("Home directory variable not set");
-      return false;
   }
   // get path to psync directory
   std::string path = std::string(homeDir) + "/.ndn/psync/";
@@ -132,6 +132,11 @@ PartialProducer::writeDefaultSeqToFile(const uint64_t &seq) {
         file_name.erase(0, 1);
   }
   m_seqFilename = path + file_name +".txt";
+  NDN_LOG_DEBUG("mSrqFileName is file name is "<< m_seqFilename);
+}
+
+bool
+PartialProducer::writeDefaultSeqToFile(const uint64_t &seq) {
 
   std::ofstream outputFile(m_seqFilename.c_str());
 

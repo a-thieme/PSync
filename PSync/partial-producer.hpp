@@ -147,6 +147,8 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   std::string m_seqFilename;
   std::optional<uint64_t>
   getDefaultSeqFromFile();
+  void
+  setDefaultSeqFileName();
 
   bool
   writeDefaultSeqToFile(const uint64_t &seq);
