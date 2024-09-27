@@ -209,8 +209,13 @@ Consumer::onDefaultStreamData(const ndn::ConstBufferPtr &bufferPtr)
 }
 
 void
-Consumer::sendSyncInterest()
+Consumer::sendSyncInterest(bool schedule)
 {
+  if (schedule){
+    NDN_LOG_TRACE("send sync interest called with schedule");
+  } else {
+    NDN_LOG_TRACE("send sync interest called without schedule");
+  }
   // /sync/sync/
   ndn::Name syncInterestName(m_syncInterestPrefix);
 
@@ -238,15 +243,18 @@ Consumer::sendSyncInterest()
     syncInterestName.append(m_iblt);
   }
 
-  auto currentTime = ndn::time::system_clock::now();
-  if ((currentTime - m_lastInterestSentTime < MIN_JITTER + SYNC_INTEREST_LIFETIME/2) &&
-      (m_outstandingInterestName == syncInterestName)) {
-    NDN_LOG_TRACE("Suppressing Interest: " << std::hash<ndn::Name>{}(syncInterestName));
-    return;
-  }
+//  auto currentTime = ndn::time::system_clock::now();
+//  if ((currentTime - m_lastInterestSentTime < MIN_JITTER + SYNC_INTEREST_LIFETIME/2) &&
+//      (m_outstandingInterestName == syncInterestName)) {
+//    NDN_LOG_TRACE("Suppressing Interest: " << std::hash<ndn::Name>{}(syncInterestName));
+//    return;
+//  }
+//  m_lastInterestSentTime = currentTime;
 
-  m_scheduler.schedule(m_syncInterestLifetime / 2 + ndn::time::milliseconds(m_jitter(m_rng)),
-                           [this] { sendSyncInterest(); });
+  if (schedule){
+    m_scheduler.schedule(m_syncInterestLifetime / 2 + ndn::time::milliseconds(m_jitter(m_rng)),
+                         [this] { sendSyncInterest(); });
+  }
 
   m_outstandingInterestName = syncInterestName;
   ndn::Interest syncInterest(syncInterestName);
@@ -265,7 +273,6 @@ Consumer::sendSyncInterest()
   options.maxTimeout = m_syncInterestLifetime;
   options.rttOptions.initialRto = m_syncInterestLifetime;
 
-  m_lastInterestSentTime = currentTime;
   m_syncFetcher = SegmentFetcher::start(m_face, syncInterest,
                                         ndn::security::getAcceptAllValidator(), options);
 
@@ -310,7 +317,8 @@ Consumer::sendSyncInterest()
       NDN_LOG_WARN("Cannot fetch sync data, error: " << errorCode << " message: " << msg);
       ndn::time::milliseconds after(m_rangeUniformRandom(m_rng));
       NDN_LOG_TRACE("Scheduling sync Interest after: " << after);
-      m_scheduler.schedule(after, [this] { sendSyncInterest(); });
+      // this was already scheduled
+//      m_scheduler.schedule(after, [this] { sendSyncInterest(); });
     }
   });
 }
@@ -365,6 +373,7 @@ Consumer::onSyncData(const ndn::ConstBufferPtr& bufferPtr)
     NDN_LOG_TRACE("Updates are not empty, sending to application callback");
     m_onUpdate(updates);
   }
+  sendSyncInterest(false);
 }
 
 } // namespace psync
