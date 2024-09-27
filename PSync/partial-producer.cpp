@@ -362,6 +362,7 @@ PartialProducer::satisfyPendingSyncInterests(const ndn::Name& prefix) {
       ndn::Name syncDataName = it->first;
       m_iblt.appendToName(syncDataName);
 
+      NDN_LOG_TRACE("segmentPublisher.publish " << syncDataName);
       m_segmentPublisher.publish(it->first, syncDataName,
                                  state.wireEncode(), m_syncReplyFreshness);
 

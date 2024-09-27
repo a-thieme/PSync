@@ -99,7 +99,7 @@ public:
    * Should be called after subscription list is set or updated
    */
   void
-  sendSyncInterest();
+  sendSyncInterest(bool schedule=true);
 
   /**
    * @brief Add prefix to subscription list

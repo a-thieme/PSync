@@ -18,8 +18,10 @@
  **/
 
 #include "PSync/segment-publisher.hpp"
+#include <ndn-cxx/util/logger.hpp>
 
 namespace psync {
+  NDN_LOG_INIT(psync.SegmentPublisher);
 
 SegmentPublisher::SegmentPublisher(ndn::Face& face, ndn::KeyChain& keyChain,
                                    const ndn::security::SigningInfo& signingInfo, size_t imsLimit)
@@ -34,6 +36,8 @@ void
 SegmentPublisher::publish(const ndn::Name& interestName, const ndn::Name& dataName,
                           ndn::span<const uint8_t> buffer, ndn::time::milliseconds freshness)
 {
+  NDN_LOG_TRACE("segpub for interest " << interestName);
+  NDN_LOG_TRACE("segpub for data name " << dataName);
   auto segments = m_segmenter.segment(buffer, ndn::Name(dataName).appendVersion(),
                                       ndn::MAX_NDN_PACKET_SIZE >> 1, freshness);
   for (const auto& data : segments) {
@@ -48,6 +52,7 @@ SegmentPublisher::publish(const ndn::Name& interestName, const ndn::Name& dataNa
     interestSegment = interestName[-1].toSegment();
   }
   if (interestSegment < segments.size()) {
+    NDN_LOG_TRACE("segpub face.put data name " << dataName);
     m_face.put(*segments[interestSegment]);
   }
 }
