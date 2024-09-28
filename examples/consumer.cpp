@@ -48,8 +48,6 @@ public:
   void
   run()
   {
-    // This starts the consumer side by sending a sync interest to the producer
-    m_consumer.sendSyncInterest();
     m_face.processEvents();
   }
 

@@ -94,14 +94,6 @@ public:
 
 
   /**
-   * @brief send sync interest /<sync-prefix>/sync/\<BF\>/\<producers-IBF\>
-   *
-   * Should be called after subscription list is set or updated
-   */
-  void
-  sendSyncInterest(bool schedule=true);
-
-  /**
    * @brief Add prefix to subscription list
    *
    * @param prefix prefix to be added to the list
@@ -144,7 +136,13 @@ public:
   sendDefaultInterest();
 
 private:
-
+  /**
+   * @brief send sync interest /<sync-prefix>/sync/\<BF\>/\<producers-IBF\>
+   *
+   * Should be called after subscription list is set or updated
+   */
+  void
+  sendSyncInterest(const bool &schedule=false);
 
   /**
    * @brief Get Default data from the producer

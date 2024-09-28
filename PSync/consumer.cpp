@@ -51,6 +51,7 @@ Consumer::Consumer(ndn::Face& face, const ndn::Name& syncPrefix, const Options& 
   , m_rangeUniformRandom(opts.syncInterestLifetime.count()/10, opts.syncInterestLifetime.count()/2)
 {
   addSubscription(m_syncPrefix.append(DEFAULT));
+  sendSyncInterest(true);
 }
 
 Consumer::Consumer(const ndn::Name& syncPrefix,
@@ -209,7 +210,7 @@ Consumer::onDefaultStreamData(const ndn::ConstBufferPtr &bufferPtr)
 }
 
 void
-Consumer::sendSyncInterest(bool schedule)
+Consumer::sendSyncInterest(const bool &schedule)
 {
   if (schedule){
     NDN_LOG_TRACE("send sync interest called with schedule");
@@ -253,7 +254,7 @@ Consumer::sendSyncInterest(bool schedule)
 
   if (schedule){
     m_scheduler.schedule(m_syncInterestLifetime / 2 + ndn::time::milliseconds(m_jitter(m_rng)),
-                         [this] { sendSyncInterest(); });
+                         [this] { sendSyncInterest(true); });
   }
 
   m_outstandingInterestName = syncInterestName;
@@ -373,7 +374,7 @@ Consumer::onSyncData(const ndn::ConstBufferPtr& bufferPtr)
     NDN_LOG_TRACE("Updates are not empty, sending to application callback");
     m_onUpdate(updates);
   }
-  sendSyncInterest(false);
+  sendSyncInterest();
 }
 
 } // namespace psync

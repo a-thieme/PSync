@@ -110,7 +110,7 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
    * Sends the sync interest
    */
   void
-  sendSyncInterest();
+  sendSyncInterest(const bool &schedule=false);
 
   void
   processWaitingInterests();

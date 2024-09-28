@@ -46,7 +46,7 @@ FullProducer::FullProducer(ndn::Face& face,
 
   // Should we do this after setInterestFilter success call back
   // (Currently following ChronoSync's way)
-  sendSyncInterest();
+  sendSyncInterest(true);
 }
 
 FullProducer::FullProducer(ndn::Face& face,
@@ -91,8 +91,13 @@ FullProducer::publishName(const ndn::Name& prefix, std::optional<uint64_t> seq)
 }
 
 void
-FullProducer::sendSyncInterest()
+FullProducer::sendSyncInterest(const bool &schedule)
 {
+  if (schedule){
+    NDN_LOG_TRACE("send sync interest called with schedule");
+  } else {
+    NDN_LOG_TRACE("send sync interest called without schedule");
+  }
   if (m_inNoNewDataWaitOutPeriod) {
     NDN_LOG_TRACE("Cannot send sync Interest as Data is expected from CS");
     return;
@@ -113,18 +118,20 @@ FullProducer::sendSyncInterest()
   // Append cumulative updates that has been inserted into this IBF
   syncInterestName.appendNumber(m_numOwnElements);
 
-  auto currentTime = ndn::time::system_clock::now();
-  if ((currentTime - m_lastInterestSentTime < ndn::time::milliseconds(MIN_JITTER)) &&
-      (m_outstandingInterestName == syncInterestName)) {
-    NDN_LOG_TRACE("Suppressing Interest: " << std::hash<ndn::Name>{}(syncInterestName));
-    return;
-  }
+//  auto currentTime = ndn::time::system_clock::now();
+//  if ((currentTime - m_lastInterestSentTime < ndn::time::milliseconds(MIN_JITTER)) &&
+//      (m_outstandingInterestName == syncInterestName)) {
+//    NDN_LOG_TRACE("Suppressing Interest: " << std::hash<ndn::Name>{}(syncInterestName));
+//    return;
+//  }
 
   m_outstandingInterestName = syncInterestName;
 
-  m_scheduledSyncInterestId =
-    m_scheduler.schedule(m_syncInterestLifetime / 2 + ndn::time::milliseconds(m_jitter(m_rng)),
-                         [this] { sendSyncInterest(); });
+  if (schedule){
+    m_scheduledSyncInterestId =
+        m_scheduler.schedule(m_syncInterestLifetime / 2 + ndn::time::milliseconds(m_jitter(m_rng)),
+                             [this] { sendSyncInterest(true); });
+  }
 
   ndn::Interest syncInterest(syncInterestName);
 
@@ -142,7 +149,7 @@ FullProducer::sendSyncInterest()
                 ", hash: " << std::hash<ndn::Name>{}(syncInterestName));
   NDN_LOG_DEBUG("sync interest name: " << syncInterest.getName());
 
-  m_lastInterestSentTime = currentTime;
+//  m_lastInterestSentTime = currentTime;
   m_fetcher = SegmentFetcher::start(m_face, syncInterest,
                                     ndn::security::getAcceptAllValidator(), options);
 
@@ -293,7 +300,7 @@ FullProducer::onSyncInterest(const ndn::Name& prefixName, const ndn::Interest& i
           NDN_LOG_TRACE("Decode failure, still behind. Erasing waiting Interest as we have tried twice");
           waitingIt->second.numTries = std::numeric_limits<uint16_t>::max(); // markWaitingInterestForDeletion
           NDN_LOG_DEBUG("Waiting Interest has been deleted. Sending new sync interest");
-          sendSyncInterest();
+          sendSyncInterest(); // part of loop????
         }
         else {
           NDN_LOG_TRACE("Decode failure, still behind, waiting more till the next timer");
