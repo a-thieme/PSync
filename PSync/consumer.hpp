@@ -174,8 +174,9 @@ private:
 
   void
   scheduleSyncInterest();
+
   void
-  setupSegmentFetcher(const ndn::Interest& interest, bool isDefault = false);
+  setupSegmentFetcher(const ndn::Interest& interest, const bool isDefault = false);
 
   ndn::Name
   buildSyncInterestName();
