@@ -69,6 +69,22 @@ Consumer::Consumer(const ndn::Name& syncPrefix,
 }
 
 
+void
+Consumer::scheduleSyncInterest()
+
+{
+    // Cancel any existing scheduled event for sync interest
+  if (m_syncInterestEvent) {
+    m_syncInterestEvent.cancel();
+  }
+
+  // Schedule a new sync interest event with a random delay
+  ndn::time::milliseconds delay = m_syncInterestLifetime / 2 + ndn::time::milliseconds(m_jitter(m_rng));
+  NDN_LOG_TRACE("Scheduling sync interest after " << delay);
+   m_syncInterestEvent = m_scheduler.schedule(delay, [this] { sendSyncInterest(true); });
+}
+
+
 bool
 Consumer::addSubscription(const ndn::Name& prefix)
 {
@@ -252,9 +268,9 @@ Consumer::sendSyncInterest(const bool &schedule)
 //  }
 //  m_lastInterestSentTime = currentTime;
 
-  if (schedule){
-    m_scheduler.schedule(m_syncInterestLifetime / 2 + ndn::time::milliseconds(m_jitter(m_rng)),
-                         [this] { sendSyncInterest(true); });
+  // If called with `schedule == false`, reset the scheduling
+  if (schedule) {
+    scheduleSyncInterest();
   }
 
   m_outstandingInterestName = syncInterestName;

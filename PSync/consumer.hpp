@@ -172,6 +172,9 @@ private:
   void
   onSyncData(const ndn::ConstBufferPtr &bufferPtr);
 
+  void
+  scheduleSyncInterest();
+
 PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   ndn::Face &m_face;
   ndn::Scheduler m_scheduler;
@@ -183,6 +186,7 @@ PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   bool m_sendEmptyIBLT;
   ndn::Name m_syncDataName;
   uint32_t m_syncDataContentType;
+  ndn::scheduler::ScopedEventId m_syncInterestEvent;
 
   ReceiveDefaultCallback m_onReceiveDefaultData;
 
