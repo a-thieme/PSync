@@ -69,6 +69,116 @@ Consumer::Consumer(const ndn::Name& syncPrefix,
 }
 
 
+ndn::Name
+Consumer::buildSyncInterestName()
+{  
+    // /sync/sync/
+  ndn::Name syncInterestName(m_syncInterestPrefix);
+   // Append subscription list
+  // /sync/sync/<SL>/
+  m_bloomFilter.appendToName(syncInterestName);
+  // /sync/sync/<SL>/<IBF>/
+  if (m_sendEmptyIBLT) {
+    // doing it this way instead of as function parameter because we would then
+    // have multiple function calls to sendSyncInterest, resulting in sending them
+    // more often than we want. We have suppression code to help in these cases,
+    // if they do happen
+
+    // we're not just changing m_iblt because getting new sync data after m_iblt
+    // is set to EMPTY_IBLT but before that interest is sent with EMPTY_IBLT will
+    // override the empty value and we won't get all the sequence numbers we need.
+
+    // when m_sendEmptyIBLT is set to true, it should result in only one sync
+    // interest being sent with the empty IBLT
+    syncInterestName.append(EMPTY_IBLT);
+    m_sendEmptyIBLT = false;
+  } else {
+    // Append IBF received in default/sync data
+    syncInterestName.append(m_iblt);
+  return syncInterestName;
+}
+
+// Helper to setup segment fetcher
+void
+Consumer::setupSegmentFetcher(const ndn::Interest& interest, bool isDefault = false)
+{
+  using ndn::SegmentFetcher;
+  SegmentFetcher::Options options;
+  options.interestLifetime = isDefault ? m_defaultInterestLifetime : m_syncInterestLifetime;
+  options.maxTimeout = options.interestLifetime;
+  options.rttOptions.initialRto = m_syncInterestLifetime;
+
+  auto& fetcher = isDefault ? m_defaultStreamFetcher : m_syncFetcher;
+
+
+  if (fetcher) {
+    fetcher->stop();
+  }
+
+  fetcher = SegmentFetcher::start(m_face, interest, ndn::security::getAcceptAllValidator(), options);
+
+  fetcher->afterSegmentValidated.connect([this] (const ndn::Data& data) {
+    if (isDefault){
+      NDN_LOG_DEBUG("Data for " << data.getFullName() << " is validated.");
+    }else{
+      // copied from full-producer.cpp
+      auto tag = data.getTag<ndn::lp::IncomingFaceIdTag>();
+      if (tag) {
+        m_incomingFace = *tag;
+      }
+      else {
+        m_incomingFace = 0;
+      }
+      if (data.getFinalBlock()) {
+        m_syncDataName = data.getName().getPrefix(-2);
+        NDN_LOG_TRACE("sync data name: " << m_syncDataName);
+        m_syncDataContentType = data.getContentType();
+        NDN_LOG_TRACE("sync data content type: " << m_syncDataContentType);
+      }
+
+      if (m_syncDataContentType == ndn::tlv::ContentType_Nack) {
+        NDN_LOG_WARN("Producer couldn't decode the difference, sending sync interest with empty IBF");
+        m_sendEmptyIBLT = true;
+      }
+    }
+  });
+
+  fetcher->onComplete.connect([this, isDefault] (const ndn::ConstBufferPtr& bufferPtr) {
+    if (isDefault) {
+      onDefaultStreamData(bufferPtr);
+    } else {
+      if (m_syncDataContentType == ndn::tlv::ContentType_Nack) {
+        NDN_LOG_TRACE("Segment fetcher completed with content type NACK");
+        m_syncDataContentType = ndn::tlv::ContentType_Blob;
+        return;
+      }
+      NDN_LOG_TRACE("Segment fetcher got sync data");
+      onSyncData(bufferPtr);
+    }
+  });
+
+  fetcher->onError.connect([this, isDefault] (uint32_t errorCode, const std::string& msg) {
+    NDN_LOG_TRACE("Cannot fetch data, error: " << errorCode << " message: " << msg);
+    auto after = ndn::time::milliseconds(m_jitter(m_rng));
+    NDN_LOG_TRACE("Scheduling after " << after);
+    m_scheduler.schedule(after, [this, isDefault] {
+      if (isDefault) {
+        sendDefaultInterest();
+      } else {
+      if (errorCode == SegmentFetcher::ErrorCode::INTEREST_TIMEOUT) {
+        // see full-producer.cpp for explanation
+        NDN_LOG_TRACE("sync interest timed out");
+      } else {
+        // warn because something else went wrong
+        NDN_LOG_WARN("Cannot fetch sync data, error: " << errorCode << " message: " << msg);
+        ndn::time::milliseconds after(m_rangeUniformRandom(m_rng));
+        NDN_LOG_TRACE("Scheduling sync Interest after: " << after);
+      }
+    });
+  });
+}
+
+
 void
 Consumer::scheduleSyncInterest()
 
@@ -81,7 +191,7 @@ Consumer::scheduleSyncInterest()
   // Schedule a new sync interest event with a random delay
   ndn::time::milliseconds delay = m_syncInterestLifetime / 2 + ndn::time::milliseconds(m_jitter(m_rng));
   NDN_LOG_TRACE("Scheduling sync interest after " << delay);
-   m_syncInterestEvent = m_scheduler.schedule(delay, [this] { sendSyncInterest(true); });
+  m_syncInterestEvent = m_scheduler.schedule(delay, [this] { sendSyncInterest(true); });
 }
 
 
@@ -89,7 +199,6 @@ bool
 Consumer::addSubscription(const ndn::Name& prefix)
 {
   NDN_LOG_TRACE("addSubscription: " << prefix);
-
   m_subscriptionList.emplace(prefix);
   NDN_LOG_DEBUG("added to subscription list: " << prefix);
   m_bloomFilter.insert(prefix);
@@ -99,7 +208,6 @@ Consumer::addSubscription(const ndn::Name& prefix)
   // since we want a sequence number for a new subscription, we need the producer to
   // think we are out of sync
   m_iblt = EMPTY_IBLT;
-
   return true;
 }
 
@@ -133,7 +241,7 @@ Consumer::isSubscribed(const ndn::Name &prefix) {
 
 std::optional<uint64_t>
 Consumer::getSeqNo(const ndn::Name &prefix) {
-  auto it = m_prefixes.find(prefix);
+  auto it = m_prefixes.find(prefix)
   if (it == m_prefixes.end()) {
     return std::nullopt;
   }

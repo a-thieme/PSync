@@ -174,6 +174,11 @@ private:
 
   void
   scheduleSyncInterest();
+  void
+  setupSegmentFetcher(const ndn::Interest& interest, bool isDefault = false);
+
+  ndn::Name
+  buildSyncInterestName();
 
 PSYNC_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   ndn::Face &m_face;
