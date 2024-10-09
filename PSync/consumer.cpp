@@ -100,9 +100,6 @@ Consumer::buildSyncInterestName()
 	return syncInterestName;
 }
 
-
-
-
 void
 Consumer::setupSegmentFetcher(const ndn::Interest& interest, bool isDefault)
 {
@@ -265,7 +262,7 @@ Consumer::stop(){
 
 
 void
-Consumer::sendSyncInterest( bool &schedule = false)
+Consumer::sendSyncInterest( const bool &schedule )
 {
 	NDN_LOG_TRACE("sendSyncInterest called, schedule: " << schedule);
 	auto syncInterestName = buildSyncInterestName();
