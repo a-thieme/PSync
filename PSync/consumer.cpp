@@ -36,35 +36,35 @@ namespace psync {
 NDN_LOG_INIT(psync.Consumer);
 
 Consumer::Consumer(ndn::Face& face, const ndn::Name& syncPrefix, const Options& opts)
-	: m_face(face)
-	, m_scheduler(m_face.getIoContext())
-	, m_syncPrefix(syncPrefix)
-	, m_defaultStreamPrefix(ndn::Name(m_syncPrefix).append(DEFAULT))
-	, m_syncInterestPrefix(ndn::Name(m_syncPrefix).append(SYNC))
-	, m_syncDataContentType(ndn::tlv::ContentType_Blob)
-	, m_onReceiveDefaultData(opts.onDefaultStreamData)
-	, m_onUpdate(opts.onUpdate)
-	, m_bloomFilter(opts.bfCount, opts.bfFalsePositive)
-	, m_defaultInterestLifetime(opts.defaultInterestLifetime)
-	, m_syncInterestLifetime(opts.syncInterestLifetime)
-	, m_rng(ndn::random::getRandomNumberEngine())
-	, m_rangeUniformRandom(opts.syncInterestLifetime.count()/10, opts.syncInterestLifetime.count()/2)
+  : m_face(face)
+  , m_scheduler(m_face.getIoContext())
+  , m_syncPrefix(syncPrefix)
+  , m_defaultStreamPrefix(ndn::Name(m_syncPrefix).append(DEFAULT))
+  , m_syncInterestPrefix(ndn::Name(m_syncPrefix).append(SYNC))
+  , m_syncDataContentType(ndn::tlv::ContentType_Blob)
+  , m_onReceiveDefaultData(opts.onDefaultStreamData)
+  , m_onUpdate(opts.onUpdate)
+  , m_bloomFilter(opts.bfCount, opts.bfFalsePositive)
+  , m_defaultInterestLifetime(opts.defaultInterestLifetime)
+  , m_syncInterestLifetime(opts.syncInterestLifetime)
+  , m_rng(ndn::random::getRandomNumberEngine())
+  , m_rangeUniformRandom(opts.syncInterestLifetime.count()/10, opts.syncInterestLifetime.count()/2)
 {
-	addSubscription(m_syncPrefix.append(DEFAULT));
-	sendSyncInterest(true);
+  addSubscription(m_syncPrefix.append(DEFAULT));
+  	sendSyncInterest(true);
 }
 
 Consumer::Consumer(const ndn::Name& syncPrefix,
-									 ndn::Face& face,
-									 const ReceiveDefaultCallback& onReceiveDefaultData,
-									 const UpdateCallback& onUpdate,
-									 unsigned int count,
-									 double falsePositive,
-									 ndn::time::milliseconds defaultInterestLifetime,
-									 ndn::time::milliseconds syncInterestLifetime)
-	: Consumer(face, syncPrefix,
-						 Options{onReceiveDefaultData, onUpdate, static_cast<uint32_t>(count), falsePositive,
-										 defaultInterestLifetime, syncInterestLifetime})
+				   ndn::Face& face,
+				   const ReceiveDefaultCallback& onReceiveDefaultData,
+				   const UpdateCallback& onUpdate,
+				   unsigned int count,
+				   double falsePositive,
+				   ndn::time::milliseconds defaultInterestLifetime,
+				   ndn::time::milliseconds syncInterestLifetime)
+  : Consumer(face, syncPrefix,
+			 Options{onReceiveDefaultData, onUpdate, static_cast<uint32_t>(count), falsePositive,
+					 defaultInterestLifetime, syncInterestLifetime})
 {
 }
 
@@ -177,8 +177,6 @@ Consumer::setupSegmentFetcher(const ndn::Interest& interest, bool isDefault)
 	});
 }
 
-
-
 void
 Consumer::scheduleSyncInterest(){
 		// Cancel any existing scheduled event for sync interest
@@ -192,72 +190,76 @@ Consumer::scheduleSyncInterest(){
 	m_syncInterestEvent = m_scheduler.schedule(delay, [this] { sendSyncInterest(true); });
 }
 
-
 bool
-Consumer::addSubscription(const ndn::Name& prefix){
-	NDN_LOG_TRACE("addSubscription: " << prefix);
-	m_subscriptionList.emplace(prefix);
-	NDN_LOG_DEBUG("added to subscription list: " << prefix);
-	m_bloomFilter.insert(prefix);
-	NDN_LOG_DEBUG("inserted into bloom filter: " << prefix);
+Consumer::addSubscription(const ndn::Name& prefix)
+{
+  NDN_LOG_TRACE("addSubscription: " << prefix);
 
-	// we will only get a sequence number for subscribed streams when we are out of sync
-	// since we want a sequence number for a new subscription, we need the producer to
-	// think we are out of sync
-	m_iblt = EMPTY_IBLT;
-	return true;
+  m_subscriptionList.emplace(prefix);
+  NDN_LOG_DEBUG("added to subscription list: " << prefix);
+  m_bloomFilter.insert(prefix);
+  NDN_LOG_DEBUG("inserted into bloom filter: " << prefix);
+
+  // we will only get a sequence number for subscribed streams when we are out of sync
+  // since we want a sequence number for a new subscription, we need the producer to
+  // think we are out of sync
+  m_iblt = EMPTY_IBLT;
+
+  return true;
 }
 
 bool
-Consumer::removeSubscription(const ndn::Name& prefix){
-	if (!isSubscribed(prefix))
-		return false;
+Consumer::removeSubscription(const ndn::Name& prefix)
+{
+  if (!isSubscribed(prefix))
+	return false;
 
-	NDN_LOG_DEBUG("Unsubscribing prefix: " << prefix);
-	m_subscriptionList.erase(prefix);
+  NDN_LOG_DEBUG("Unsubscribing prefix: " << prefix);
+  m_subscriptionList.erase(prefix);
 
-	// Clear and reconstruct the bloom filter
-	m_bloomFilter.clear();
+  // Clear and reconstruct the bloom filter
+  m_bloomFilter.clear();
 
-	for (const auto& item : m_subscriptionList)
-		m_bloomFilter.insert(item);
+  for (const auto& item : m_subscriptionList)
+	m_bloomFilter.insert(item);
 
-	return true;
+  return true;
 }
 
 std::set <ndn::Name>
 Consumer::getSubscriptionList() {
-		return m_subscriptionList;
+	return m_subscriptionList;
 }
 
 bool
 Consumer::isSubscribed(const ndn::Name &prefix) {
-	return m_subscriptionList.find(prefix) != m_subscriptionList.end();
+  return m_subscriptionList.find(prefix) != m_subscriptionList.end();
 }
 
 std::optional<uint64_t>
 Consumer::getSeqNo(const ndn::Name &prefix) {
-	auto it = m_prefixes.find(prefix);
-	if (it == m_prefixes.end()) {
-		return std::nullopt;
-	}
-	return it->second;
+  auto it = m_prefixes.find(prefix);
+  if (it == m_prefixes.end()) {
+	return std::nullopt;
+  }
+  return it->second;
 }
 
 void
-Consumer::stop(){
-	NDN_LOG_DEBUG("Canceling all the scheduled events");
-	m_scheduler.cancelAllEvents();
+Consumer::stop()
+{
+  NDN_LOG_DEBUG("Canceling all the scheduled events");
+  m_scheduler.cancelAllEvents();
 
-	if (m_syncFetcher) {
-		m_syncFetcher->stop();
-		m_syncFetcher.reset();
-	}
+  if (m_syncFetcher) {
+	m_syncFetcher->stop();
+	m_syncFetcher.reset();
+  }
 
-	if (m_defaultStreamFetcher) {
-		m_defaultStreamFetcher->stop();
-		m_defaultStreamFetcher.reset();
-	}
+  if (m_defaultStreamFetcher) {
+	m_defaultStreamFetcher->stop();
+	m_defaultStreamFetcher.reset();
+  }
 }
 
 
@@ -280,44 +282,42 @@ Consumer::sendSyncInterest( const bool &schedule )
 }
 
 
-
 void
 Consumer::sendDefaultInterest()
 {
-	auto seq = getSeqNo(m_defaultStreamPrefix);
-	if (!seq.value()) {
-		NDN_LOG_WARN("default stream prefix does not have sequence number but sendDefaultInterest was called");
-		return;
-	}
+  auto seq = getSeqNo(m_defaultStreamPrefix);
 
-	ndn::Name interestName = m_defaultStreamPrefix;
-	interestName.appendNumber(*seq);
-	ndn::Interest defaultStreamInterest(interestName);
-	setupSegmentFetcher(defaultStreamInterest, true);
+  if (!seq.value()){
+	NDN_LOG_WARN("default stream prefix does not have sequence number but sendDefaultInterest was called");
+	return;
+  }
+  ndn::Name interestName = m_defaultStreamPrefix;
+  interestName.appendNumber(*seq);
+  ndn::Interest defaultStreamInterest(interestName);
+  setupSegmentFetcher(defaultStreamInterest, true);
 }
 
-
-
-// Data handling
 void
-Consumer::onDefaultStreamData(const ndn::ConstBufferPtr& bufferPtr)
+Consumer::onDefaultStreamData(const ndn::ConstBufferPtr &bufferPtr)
 {
   NDN_LOG_TRACE("onDefaultStreamData");
+
   detail::State state{ndn::Block(bufferPtr)};
   std::vector<ndn::Name> availableSubscriptions;
+
   NDN_LOG_DEBUG("Default Data: " << state);
 
-  for (const ndn::Name& prefix : state) {
-    NDN_LOG_TRACE("onDefaultStreamData prefix: " << prefix);
-    if (!m_defaultStreamPrefix.equals(prefix)) {
-      NDN_LOG_DEBUG("new stream available: " << prefix);
-      availableSubscriptions.push_back(prefix);
-    }
+  for (const ndn::Name prefix : state) {
+	NDN_LOG_TRACE("onDefaultStreamData prefix: " << prefix);
+	if (!m_defaultStreamPrefix.equals(prefix))
+	{
+	  NDN_LOG_DEBUG("new stream available: " << prefix);
+	  availableSubscriptions.push_back(prefix);
+	}
   }
-
   if (!availableSubscriptions.empty()) {
-    NDN_LOG_DEBUG("do on default data callback because there are available subscriptions");
-    m_onReceiveDefaultData(availableSubscriptions);
+	NDN_LOG_DEBUG("do on default data callback because there are available subscriptions");
+	m_onReceiveDefaultData(availableSubscriptions);
   }
 }
 
@@ -325,54 +325,54 @@ Consumer::onDefaultStreamData(const ndn::ConstBufferPtr& bufferPtr)
 void
 Consumer::onSyncData(const ndn::ConstBufferPtr& bufferPtr)
 {
-	// Extract IBF from sync data name which is the last component
-	m_iblt = m_syncDataName.get(m_syncDataName.size() - 1);
+  // Extract IBF from sync data name which is the last component
+  m_iblt = m_syncDataName.get(m_syncDataName.size() - 1);
 
-	detail::State state{ndn::Block(bufferPtr)};
-	NDN_LOG_DEBUG("onSyncData state: " << state);
+  detail::State state{ndn::Block(bufferPtr)};
+  NDN_LOG_DEBUG("onSyncData state: " << state);
 
-	std::vector<MissingDataInfo> updates;
+  std::vector<MissingDataInfo> updates;
 
-	for (const auto& content : state) {
-		NDN_LOG_TRACE("content in state: " << content);
-		const ndn::Name& prefix = content.getPrefix(-1);
-		NDN_LOG_TRACE("prefix in content: " << prefix);
-		uint64_t seq = content.get(content.size() - 1).toNumber();
-		NDN_LOG_TRACE("seq in content: " << seq);
-		// false positives can occur when the producer checks for updates that match our subscriptions list,
-		// so we have to check to make sure the prefix is in our subscription list (m_prefixes)
-		if (m_subscriptionList.find(prefix) == m_subscriptionList.end()) {
-			// possible security concerns may occur if access control is done on the "default" stream because
-			// false positives will leak available prefix names
-			NDN_LOG_WARN("False positive detected for prefix " << prefix);
-		} else if (m_prefixes.find(prefix) == m_prefixes.end() || seq > m_prefixes[prefix]) {
-			uint64_t oldSeq = m_prefixes[prefix];
-			// consumer subscribed to the prefix and there is an update to that stream
-			NDN_LOG_TRACE("storing new sequence number " << seq << " for prefix " << prefix << " replacing seq " << oldSeq);
-			m_prefixes[prefix] = seq;
-			if (prefix.equals(m_defaultStreamPrefix)) {
-				NDN_LOG_TRACE("prefix matches default stream prefix " << m_defaultStreamPrefix);
-				// send an interest for "default" data since there's an update to it
-				sendDefaultInterest();
-			} else {
-				// If this is just the next seq number then we had already informed the consumer about
-				// the previous sequence number and hence seq low and seq high should be equal to current seq
-				NDN_LOG_TRACE("adding update for prefix " << prefix << " with lowSeq as " << oldSeq + 1 << " high as " << seq << " and incomingFace" << m_incomingFace);
-				updates.push_back({prefix, oldSeq + 1, seq, m_incomingFace});
-			}
-		} else {
-			// consumer got "update" for subscribed stream, but the "new" sequence number is the same as
-			// the consumer's "old" sequence
-			NDN_LOG_WARN("Got update for prefix " << prefix << " but the sequence number is not new: " << m_prefixes[prefix] << " <= " << seq);
-		}
+  for (const auto& content : state) {
+	NDN_LOG_TRACE("content in state: " << content);
+	const ndn::Name& prefix = content.getPrefix(-1);
+	NDN_LOG_TRACE("prefix in content: " << prefix);
+	uint64_t seq = content.get(content.size() - 1).toNumber();
+	NDN_LOG_TRACE("seq in content: " << seq);
+	// false positives can occur when the producer checks for updates that match our subscriptions list,
+	// so we have to check to make sure the prefix is in our subscription list (m_prefixes)
+	if (m_subscriptionList.find(prefix) == m_subscriptionList.end()) {
+	  // possible security concerns may occur if access control is done on the "default" stream because
+	  // false positives will leak available prefix names
+	  NDN_LOG_WARN("False positive detected for prefix " << prefix);
+	} else if (m_prefixes.find(prefix) == m_prefixes.end() || seq > m_prefixes[prefix]) {
+	  uint64_t oldSeq = m_prefixes[prefix];
+	  // consumer subscribed to the prefix and there is an update to that stream
+	  NDN_LOG_TRACE("storing new sequence number " << seq << " for prefix " << prefix << " replacing seq " << oldSeq);
+	  m_prefixes[prefix] = seq;
+	  if (prefix.equals(m_defaultStreamPrefix)) {
+		NDN_LOG_TRACE("prefix matches default stream prefix " << m_defaultStreamPrefix);
+		// send an interest for "default" data since there's an update to it
+		sendDefaultInterest();
+	  } else {
+		// If this is just the next seq number then we had already informed the consumer about
+		// the previous sequence number and hence seq low and seq high should be equal to current seq
+		NDN_LOG_TRACE("adding update for prefix " << prefix << " with lowSeq as " << oldSeq + 1 << " high as " << seq << " and incomingFace" << m_incomingFace);
+		updates.push_back({prefix, oldSeq + 1, seq, m_incomingFace});
+	  }
+	} else {
+	  // consumer got "update" for subscribed stream, but the "new" sequence number is the same as
+	  // the consumer's "old" sequence
+	  NDN_LOG_WARN("Got update for prefix " << prefix << " but the sequence number is not new: " << m_prefixes[prefix] << " <= " << seq);
 	}
+  }
 
-	NDN_LOG_TRACE("Got to end of state");
-	if (!updates.empty()) {
-		NDN_LOG_TRACE("Updates are not empty, sending to application callback");
-		m_onUpdate(updates);
-	}
-	sendSyncInterest();
+  NDN_LOG_TRACE("Got to end of state");
+  if (!updates.empty()) {
+	NDN_LOG_TRACE("Updates are not empty, sending to application callback");
+	m_onUpdate(updates);
+  }
+  	sendSyncInterest();
 }
 
 } // namespace psync
